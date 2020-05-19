@@ -1,20 +1,16 @@
-use std::{
-    mem::{self, ManuallyDrop},
-    ptr,
-};
+use std::{borrow::Borrow, iter, mem::ManuallyDrop, ptr};
 
 use winit::{
     dpi::{LogicalSize, PhysicalSize},
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    window::WindowBuilder,
 };
 
 use gfx_hal::{
-    buffer, command,
     device::Device,
-    memory,
-    queue::{QueueFamily, QueueGroup, Submission},
+    image,
+    queue::QueueFamily,
     window::{Extent2D, PresentationSurface, Surface},
     Instance,
 };
@@ -52,34 +48,34 @@ fn main() {
         (instance, surface, adapter)
     };
 
-    let mut renderer = Renderer::new(instance, surface, adapter);
+    let mut renderer = Renderer::new(instance, surface, adapter, surface_extent);
 
     // access to command queues to give commands to gpu
     // queue must be compatible with surface and support the graphics card
-
-    let mut should_configure_swapchain = true;
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent { event, .. } => match event {
             WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
             WindowEvent::Resized(dims) => {
-                surface_extent = Extent2D {
+                renderer.dimensions = Extent2D {
                     width: dims.width,
                     height: dims.height,
                 };
-                should_configure_swapchain = true;
+                renderer.renew_swapchain();
             }
             WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                surface_extent = Extent2D {
+                renderer.dimensions = Extent2D {
                     width: new_inner_size.width,
                     height: new_inner_size.height,
                 };
-                should_configure_swapchain = true;
+                renderer.renew_swapchain();
             }
             _ => (),
         },
         Event::MainEventsCleared => window.request_redraw(),
-        Event::RedrawRequested(_) => {}
+        Event::RedrawRequested(_) => {
+            renderer.render();
+        }
         _ => (),
     });
 }
@@ -88,13 +84,17 @@ struct Renderer<B: gfx_hal::Backend> {
     instance: B::Instance,
     surface: ManuallyDrop<B::Surface>,
     adapter: gfx_hal::adapter::Adapter<B>,
-    device: ManuallyDrop<B::Device>,
+    device: B::Device,
     render_passes: ManuallyDrop<Vec<B::RenderPass>>,
     pipeline_layouts: ManuallyDrop<Vec<B::PipelineLayout>>,
     pipelines: ManuallyDrop<Vec<B::GraphicsPipeline>>,
     command_pools: Vec<B::CommandPool>,
+    command_buffers: Vec<B::CommandBuffer>,
     submission_complete_semaphores: Vec<B::Semaphore>,
     submission_complete_fences: Vec<B::Fence>,
+    dimensions: Extent2D,
+    format: gfx_hal::format::Format,
+    queue_group: gfx_hal::queue::family::QueueGroup<B>,
 }
 
 impl<B: gfx_hal::Backend> Renderer<B> {
@@ -102,6 +102,7 @@ impl<B: gfx_hal::Backend> Renderer<B> {
         instance: B::Instance,
         mut surface: B::Surface,
         adapter: gfx_hal::adapter::Adapter<B>,
+        dimensions: Extent2D,
     ) -> Renderer<B> {
         let (device, mut queue_group) = {
             let queue_family = adapter
@@ -137,7 +138,7 @@ impl<B: gfx_hal::Backend> Renderer<B> {
             (command_pool, command_buffer)
         };
 
-        let surface_color_format = {
+        let format = {
             use gfx_hal::format::{ChannelType, Format};
 
             let supported_formats = surface
@@ -151,6 +152,13 @@ impl<B: gfx_hal::Backend> Renderer<B> {
                 .find(|format| format.base_format().1 == ChannelType::Srgb)
                 .unwrap_or(default_format)
         };
+        let caps = surface.capabilities(&adapter.physical_device);
+        let swap_config = gfx_hal::window::SwapchainConfig::from_caps(&caps, format, dimensions);
+        unsafe {
+            surface
+                .configure_swapchain(&device, swap_config)
+                .expect("Can't configure swapchain");
+        };
 
         let render_pass = {
             use gfx_hal::image::Layout;
@@ -159,7 +167,7 @@ impl<B: gfx_hal::Backend> Renderer<B> {
             };
 
             let color_attachment = Attachment {
-                format: Some(surface_color_format),
+                format: Some(format),
                 samples: 1,
                 ops: AttachmentOps::new(AttachmentLoadOp::Clear, AttachmentStoreOp::Store),
                 stencil_ops: AttachmentOps::DONT_CARE,
@@ -212,13 +220,135 @@ impl<B: gfx_hal::Backend> Renderer<B> {
             instance,
             surface: drop(surface),
             adapter,
-            device: drop(device),
+            device,
             render_passes: drop(vec![render_pass]),
             pipeline_layouts: drop(vec![pipeline_layout]),
             pipelines: drop(vec![pipeline]),
             command_pools: vec![command_pool],
+            command_buffers: vec![command_buffer],
             submission_complete_semaphores: vec![rendering_complete_semaphore],
             submission_complete_fences: vec![submission_complete_fence],
+            dimensions,
+            format,
+            queue_group,
+        }
+    }
+
+    fn renew_swapchain(&mut self) {
+        let caps = self.surface.capabilities(&self.adapter.physical_device);
+        let swap_config =
+            gfx_hal::window::SwapchainConfig::from_caps(&caps, self.format, self.dimensions);
+        let extent = swap_config.extent.to_extent();
+
+        unsafe {
+            self.surface
+                .configure_swapchain(&self.device, swap_config)
+                .expect("Can't create swapchain");
+        }
+    }
+
+    fn render(&mut self) {
+        use gfx_hal::pool::CommandPool;
+        let render_timeout_ns = 1_000_000_000;
+        unsafe {
+            self.device
+                .wait_for_fence(&self.submission_complete_fences[0], render_timeout_ns)
+                .expect("Out of memory");
+
+            self.device
+                .reset_fence(&self.submission_complete_fences[0])
+                .expect("Out of memory");
+
+            self.command_pools[0].reset(false);
+        };
+
+        let surface_image = unsafe {
+            match self.surface.acquire_image(!0) {
+                Ok((image, _)) => image,
+                Err(_) => {
+                    self.renew_swapchain();
+                    return;
+                }
+            }
+        };
+
+        let framebuffer = unsafe {
+            self.device
+                .create_framebuffer(
+                    &self.render_passes[0],
+                    iter::once(surface_image.borrow()),
+                    image::Extent {
+                        width: self.dimensions.width,
+                        height: self.dimensions.height,
+                        depth: 1,
+                    },
+                )
+                .unwrap()
+        };
+
+        let viewport = {
+            use gfx_hal::pso::{Rect, Viewport};
+
+            Viewport {
+                rect: Rect {
+                    x: 0,
+                    y: 0,
+                    w: self.dimensions.width as i16,
+                    h: self.dimensions.height as i16,
+                },
+                depth: 0.0..1.0,
+            }
+        };
+
+        unsafe {
+            use gfx_hal::command::{
+                ClearColor, ClearValue, CommandBuffer, CommandBufferFlags, SubpassContents,
+            };
+
+            self.command_buffers[0].begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
+
+            self.command_buffers[0].set_viewports(0, &[viewport.clone()]);
+            self.command_buffers[0].set_scissors(0, &[viewport.rect]);
+
+            self.command_buffers[0].begin_render_pass(
+                &self.render_passes[0],
+                &framebuffer,
+                viewport.rect,
+                &[ClearValue {
+                    color: ClearColor {
+                        float32: [0.0, 0.0, 0.0, 1.0],
+                    },
+                }],
+                SubpassContents::Inline,
+            );
+
+            self.command_buffers[0].bind_graphics_pipeline(&self.pipelines[0]);
+
+            self.command_buffers[0].draw(0..3, 0..1);
+
+            self.command_buffers[0].end_render_pass();
+            self.command_buffers[0].finish();
+        }
+
+        unsafe {
+            use gfx_hal::queue::{CommandQueue, Submission};
+
+            let submission = Submission {
+                command_buffers: &self.command_buffers,
+                wait_semaphores: None,
+                signal_semaphores: &self.submission_complete_semaphores,
+            };
+
+            self.queue_group.queues[0]
+                .submit(submission, Some(&self.submission_complete_fences[0]));
+
+            let result = self.queue_group.queues[0].present_surface(
+                &mut self.surface,
+                surface_image,
+                Some(&self.submission_complete_semaphores[0]),
+            );
+
+            self.device.destroy_framebuffer(framebuffer);
         }
     }
 }
@@ -252,8 +382,7 @@ impl<B: gfx_hal::Backend> Drop for Renderer<B> {
             }
 
             self.surface.unconfigure_swapchain(&self.device);
-            self.instance
-                .destroy_surface(undrop(&self.surface));
+            self.instance.destroy_surface(undrop(&self.surface));
         }
     }
 }
