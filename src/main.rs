@@ -253,7 +253,7 @@ impl<B: gfx_hal::Backend> Drop for Renderer<B> {
 
             self.surface.unconfigure_swapchain(&self.device);
             self.instance
-                .destroy_surface(ManuallyDrop::into_inner(ptr::read(&self.surface)));
+                .destroy_surface(undrop(&self.surface));
         }
     }
 }
@@ -407,6 +407,6 @@ fn drop<T>(object: T) -> ManuallyDrop<T> {
     ManuallyDrop::new(object)
 }
 
-unsafe fn undrop<T>(object: ManuallyDrop<T>) -> T {
-    ManuallyDrop::into_inner(ptr::read(&object))
+unsafe fn undrop<T>(object: &ManuallyDrop<T>) -> T {
+    ManuallyDrop::into_inner(ptr::read(object))
 }
