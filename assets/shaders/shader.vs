@@ -1,15 +1,13 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-void main() {
-    vec2 position;
-    if (gl_VertexIndex == 0) {
-        position = vec2(0.0, -0.5);
-    } else if (gl_VertexIndex == 1) {
-        position = vec2(-0.5, 0.5);
-    } else if (gl_VertexIndex == 2) {
-        position = vec2(0.5, 0.5);
-    }
+layout (location = 0) in vec3 pos;
+layout (location = 1) in vec4 color;
 
-    gl_Position = vec4(position, 0.0, 1.0);
+layout (location = 0) out vec4 frag_color;
+
+void main() {
+    frag_color = color;
+    gl_Position = vec4(pos, 1.0);
+
 }

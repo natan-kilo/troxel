@@ -88,13 +88,17 @@ struct Renderer<B: gfx_hal::Backend> {
     render_passes: ManuallyDrop<Vec<B::RenderPass>>,
     pipeline_layouts: ManuallyDrop<Vec<B::PipelineLayout>>,
     pipelines: ManuallyDrop<Vec<B::GraphicsPipeline>>,
+    buffer: ManuallyDrop<Vec<B::Buffer>>,
+    buffer_memory: ManuallyDrop<Vec<B::Memory>>,
     command_pools: Vec<B::CommandPool>,
     command_buffers: Vec<B::CommandBuffer>,
     submission_complete_semaphores: Vec<B::Semaphore>,
     submission_complete_fences: Vec<B::Fence>,
     dimensions: Extent2D,
+    viewport: gfx_hal::pso::Viewport,
     format: gfx_hal::format::Format,
     queue_group: gfx_hal::queue::family::QueueGroup<B>,
+    start_time: std::time::Instant,
 }
 
 impl<B: gfx_hal::Backend> Renderer<B> {
@@ -195,9 +199,40 @@ impl<B: gfx_hal::Backend> Renderer<B> {
             let push_constant_bytes = std::mem::size_of::<Vertex>() as u32;
 
             device
-                .create_pipeline_layout(&[], &[(ShaderStageFlags::VERTEX, 0..push_constant_bytes)])
+                .create_pipeline_layout(&[], &[])
                 .expect("Out of memory")
         };
+
+        let vertex_buffer_len = MESH.len() * std::mem::size_of::<Vertex>();
+
+        let (vertex_buffer_memory, vertex_buffer) = unsafe {
+            use gfx_hal::buffer::Usage;
+            use gfx_hal::memory::Properties;
+
+            new_buffer::<B>(
+                &device,
+                &adapter.physical_device,
+                vertex_buffer_len,
+                Usage::VERTEX,
+                Properties::CPU_VISIBLE,
+            )
+        };
+
+        unsafe {
+            use gfx_hal::memory::Segment;
+
+            let mapped_memory = device
+                .map_memory(&vertex_buffer_memory, Segment::ALL)
+                .expect("TODO");
+
+            std::ptr::copy(MESH.as_ptr() as *const u8, mapped_memory, vertex_buffer_len);
+
+            device
+                .flush_mapped_memory_ranges(vec![(&vertex_buffer_memory, Segment::ALL)])
+                .expect("TODO");
+
+            device.unmap_memory(&vertex_buffer_memory);
+        }
 
         let vertex_shader = include_str!("../assets/shaders/shader.vs");
         let fragment_shader = include_str!("../assets/shaders/shader.fs");
@@ -212,9 +247,21 @@ impl<B: gfx_hal::Backend> Renderer<B> {
             )
         };
 
+        let viewport = gfx_hal::pso::Viewport {
+            rect: gfx_hal::pso::Rect {
+                x: 0,
+                y: 0,
+                w: dimensions.width as i16,
+                h: dimensions.height as i16,
+            },
+            depth: 0.0..1.0,
+        };
+
         let submission_complete_fence: B::Fence = device.create_fence(true).expect("Out of memory");
         let rendering_complete_semaphore: B::Semaphore =
             device.create_semaphore().expect("Out of memory");
+
+        let start_time = std::time::Instant::now();
 
         Renderer {
             instance,
@@ -224,13 +271,17 @@ impl<B: gfx_hal::Backend> Renderer<B> {
             render_passes: drop(vec![render_pass]),
             pipeline_layouts: drop(vec![pipeline_layout]),
             pipelines: drop(vec![pipeline]),
+            buffer: drop(vec![vertex_buffer]),
+            buffer_memory: drop(vec![vertex_buffer_memory]),
             command_pools: vec![command_pool],
             command_buffers: vec![command_buffer],
             submission_complete_semaphores: vec![rendering_complete_semaphore],
             submission_complete_fences: vec![submission_complete_fence],
             dimensions,
+            viewport,
             format,
             queue_group,
+            start_time,
         }
     }
 
@@ -245,6 +296,8 @@ impl<B: gfx_hal::Backend> Renderer<B> {
                 .configure_swapchain(&self.device, swap_config)
                 .expect("Can't create swapchain");
         }
+        self.viewport.rect.w = extent.width as i16;
+        self.viewport.rect.h = extent.height as i16;
     }
 
     fn render(&mut self) {
@@ -286,19 +339,9 @@ impl<B: gfx_hal::Backend> Renderer<B> {
                 .unwrap()
         };
 
-        let viewport = {
-            use gfx_hal::pso::{Rect, Viewport};
+        let time = self.start_time.elapsed().as_secs_f32().sin() * 0.5 + 0.5;
 
-            Viewport {
-                rect: Rect {
-                    x: 0,
-                    y: 0,
-                    w: self.dimensions.width as i16,
-                    h: self.dimensions.height as i16,
-                },
-                depth: 0.0..1.0,
-            }
-        };
+        let mesh = MESH;
 
         unsafe {
             use gfx_hal::command::{
@@ -307,13 +350,16 @@ impl<B: gfx_hal::Backend> Renderer<B> {
 
             self.command_buffers[0].begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
 
-            self.command_buffers[0].set_viewports(0, &[viewport.clone()]);
-            self.command_buffers[0].set_scissors(0, &[viewport.rect]);
+            self.command_buffers[0].set_viewports(0, &[self.viewport.clone()]);
+            self.command_buffers[0].set_scissors(0, &[self.viewport.rect]);
+
+            self.command_buffers[0]
+                .bind_vertex_buffers(0, vec![(&self.buffer[0], gfx_hal::buffer::SubRange::WHOLE)]);
 
             self.command_buffers[0].begin_render_pass(
                 &self.render_passes[0],
                 &framebuffer,
-                viewport.rect,
+                self.viewport.rect,
                 &[ClearValue {
                     color: ClearColor {
                         float32: [0.0, 0.0, 0.0, 1.0],
@@ -324,7 +370,8 @@ impl<B: gfx_hal::Backend> Renderer<B> {
 
             self.command_buffers[0].bind_graphics_pipeline(&self.pipelines[0]);
 
-            self.command_buffers[0].draw(0..3, 0..1);
+            let num_vertecies = mesh.len() as u32;
+            self.command_buffers[0].draw(0..num_vertecies, 0..1);
 
             self.command_buffers[0].end_render_pass();
             self.command_buffers[0].finish();
@@ -348,6 +395,10 @@ impl<B: gfx_hal::Backend> Renderer<B> {
                 Some(&self.submission_complete_semaphores[0]),
             );
 
+            if result.is_err() {
+                self.renew_swapchain();
+            }
+
             self.device.destroy_framebuffer(framebuffer);
         }
     }
@@ -357,6 +408,14 @@ impl<B: gfx_hal::Backend> Drop for Renderer<B> {
     fn drop(&mut self) {
         self.device.wait_idle().unwrap();
         unsafe {
+            for mem in self.buffer_memory.drain(..) {
+                self.device.free_memory(mem);
+            }
+
+            for buff in self.buffer.drain(..) {
+                self.device.destroy_buffer(buff);
+            }
+
             for semaphore in self.submission_complete_semaphores.drain(..) {
                 self.device.destroy_semaphore(semaphore);
             }
@@ -386,9 +445,11 @@ impl<B: gfx_hal::Backend> Drop for Renderer<B> {
         }
     }
 }
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
 struct Vertex {
-    position: [f32; 3],
-    scale: [f32; 3],
+    pos: [f32; 3],
     color: [f32; 4],
 }
 
@@ -492,11 +553,9 @@ unsafe fn new_pipeline<B: gfx_hal::Backend>(
 
     let mut pipeline_desc = GraphicsPipelineDesc::new(
         shader_entries,
+        // Define type of primitive eg. line or triangle
         Primitive::TriangleList,
-        Rasterizer {
-            cull_face: Face::BACK,
-            ..Rasterizer::FILL
-        },
+        Rasterizer::FILL,
         pipeline_layout,
         Subpass {
             index: 0,
@@ -508,6 +567,36 @@ unsafe fn new_pipeline<B: gfx_hal::Backend>(
         mask: ColorMask::ALL,
         blend: Some(BlendState::ALPHA),
     });
+
+    {
+        use gfx_hal::format::Format;
+        use gfx_hal::pso::{AttributeDesc, Element, VertexBufferDesc, VertexInputRate};
+
+        pipeline_desc.vertex_buffers.push(VertexBufferDesc {
+            binding: 0,
+            stride: std::mem::size_of::<Vertex>() as u32,
+            rate: VertexInputRate::Vertex,
+        });
+
+        pipeline_desc.attributes.push(AttributeDesc {
+            location: 0,
+            binding: 0,
+            element: Element {
+                format: Format::Rgb32Sfloat,
+                offset: 0,
+            },
+        });
+
+        pipeline_desc.attributes.push(AttributeDesc {
+            location: 1,
+            binding: 0,
+            element: Element {
+                format: Format::Rgb32Sfloat,
+                offset: 12,
+            },
+        });
+    }
+
     let pipeline = device
         .create_graphics_pipeline(&pipeline_desc, None)
         .expect("Failed to create graphics pipeline");
@@ -516,6 +605,13 @@ unsafe fn new_pipeline<B: gfx_hal::Backend>(
     device.destroy_shader_module(fragment_shader_module);
 
     pipeline
+}
+
+unsafe fn push_constant_bytes<T>(push_constants: &T) -> &[u32] {
+    let size_in_bytes = std::mem::size_of::<T>();
+    let size_in_u32s = size_in_bytes / std::mem::size_of::<u32>();
+    let start_ptr = push_constants as *const T as *const u32;
+    std::slice::from_raw_parts(start_ptr, size_in_u32s)
 }
 
 fn compile_shader(glsl: &str, shader_type: ShaderType) -> Vec<u32> {
@@ -539,3 +635,45 @@ fn drop<T>(object: T) -> ManuallyDrop<T> {
 unsafe fn undrop<T>(object: &ManuallyDrop<T>) -> T {
     ManuallyDrop::into_inner(ptr::read(object))
 }
+
+const TRIANGLE: [Vertex; 3] = [
+    Vertex {
+        pos: [-0.5, -0.5, 0.0],
+        color: [1.0, 0.0, 0.0, 1.0],
+    },
+    Vertex {
+        pos: [0.5, 0.5, 0.0],
+        color: [0.0, 1.0, 0.0, 1.0],
+    },
+    Vertex {
+        pos: [0.0, 0.5, 0.0],
+        color: [0.0, 0.0, 1.0, 1.0],
+    },
+];
+
+const MESH: &[Vertex] = &[
+    Vertex {
+        pos: [0.0, -1.0, 0.0],
+        color: [1.0, 0.0, 0.0, 1.0],
+    },
+    Vertex {
+        pos: [-1.0, 0.0, 0.0],
+        color: [0.0, 0.0, 1.0, 1.0],
+    },
+    Vertex {
+        pos: [0.0, 1.0, 0.0],
+        color: [0.0, 1.0, 0.0, 1.0],
+    },
+    Vertex {
+        pos: [0.0, -1.0, 0.0],
+        color: [1.0, 0.0, 0.0, 1.0],
+    },
+    Vertex {
+        pos: [0.0, 1.0, 0.0],
+        color: [0.0, 1.0, 0.0, 1.0],
+    },
+    Vertex {
+        pos: [1.0, 0.0, 0.0],
+        color: [1.0, 1.0, 0.0, 1.0],
+    },
+];
