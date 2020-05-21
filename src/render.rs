@@ -42,7 +42,6 @@ pub struct Renderer<B: hal::Backend> {
     viewport: Viewport,
     format: Format,
     queue_group: QueueGroup<B>,
-    start_time: std::time::Instant,
 }
 
 impl<B: hal::Backend> Renderer<B> {
@@ -52,7 +51,7 @@ impl<B: hal::Backend> Renderer<B> {
         adapter: Adapter<B>,
         dimensions: Extent2D,
     ) -> Renderer<B> {
-        let (device, mut queue_group) = {
+        let (device, queue_group) = {
             let queue_family = adapter
                 .queue_families
                 .iter()
@@ -71,7 +70,7 @@ impl<B: hal::Backend> Renderer<B> {
             (gpu.device, gpu.queue_groups.pop().unwrap())
         };
 
-        let (command_pool, mut command_buffer) = unsafe {
+        let (command_pool, command_buffer) = unsafe {
             let mut command_pool = device
                 .create_command_pool(queue_group.family, CommandPoolCreateFlags::empty())
                 .expect("Out of memory");
@@ -126,8 +125,6 @@ impl<B: hal::Backend> Renderer<B> {
         };
 
         let pipeline_layout: B::PipelineLayout = unsafe {
-            let push_constant_bytes = std::mem::size_of::<Vertex>() as u32;
-
             device
                 .create_pipeline_layout(&[], &[])
                 .expect("Out of memory")
@@ -186,8 +183,6 @@ impl<B: hal::Backend> Renderer<B> {
         let rendering_complete_semaphore: B::Semaphore =
             device.create_semaphore().expect("Out of memory");
 
-        let start_time = std::time::Instant::now();
-
         Renderer {
             instance,
             surface: drop(surface),
@@ -206,7 +201,6 @@ impl<B: hal::Backend> Renderer<B> {
             viewport,
             format,
             queue_group,
-            start_time,
         }
     }
 
@@ -262,8 +256,6 @@ impl<B: hal::Backend> Renderer<B> {
                 )
                 .unwrap()
         };
-
-        let time = self.start_time.elapsed().as_secs_f32().sin() * 0.5 + 0.5;
 
         let mesh = MESH;
 

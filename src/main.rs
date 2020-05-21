@@ -1,18 +1,10 @@
-use std::{borrow::Borrow, iter, mem::ManuallyDrop};
-
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
 
-use gfx_hal::{
-    device::Device,
-    image,
-    queue::QueueFamily,
-    window::{Extent2D, PresentationSurface, Surface},
-    Instance,
-};
+use gfx_hal::{window::Extent2D, Instance};
 
 mod buffer;
 mod config;
@@ -38,7 +30,7 @@ fn main() {
         .expect("Failed to create window");
 
     // Surface to integrate vulkan into window
-    let mut surface_extent = create_surface_extent(&physical_size);
+    let surface_extent = create_surface_extent(&physical_size);
 
     let (instance, surface, adapter) = {
         let instance = backend::Instance::create(APP_NAME, 1).expect("Backend not supported");
