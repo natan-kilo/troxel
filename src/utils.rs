@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 use crate::config::WINDOW_SIZE;
 use gfx_hal::{
     adapter::Adapter,
@@ -28,10 +30,6 @@ pub fn compile_shader(glsl: &str, shader_type: ShaderType) -> Vec<u32> {
 
 pub fn drop<T>(object: T) -> ManuallyDrop<T> {
     ManuallyDrop::new(object)
-}
-
-pub unsafe fn undrop<T>(object: &ManuallyDrop<T>) -> T {
-    ManuallyDrop::into_inner(ptr::read(object))
 }
 
 pub fn window_sizes(event_loop: &EventLoop<()>) -> (LogicalSize<u32>, PhysicalSize<u32>) {
