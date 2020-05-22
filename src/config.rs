@@ -1,0 +1,3 @@
+// PROBABLY A TEMPORARY FILE AND WILL SOON BE REPLACED BY JSON OR A SIMILAR FORMAT
+pub const APP_NAME: &'static str = "Troxel";
+pub const WINDOW_SIZE: [u32; 2] = [512, 512];
