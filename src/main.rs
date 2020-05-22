@@ -1,7 +1,6 @@
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
 };
 
 use gfx_hal::{window::Extent2D, Instance};
@@ -16,21 +15,16 @@ mod utils;
 
 use config::APP_NAME;
 use render::Renderer;
-use utils::{create_surface_extent, window_sizes};
+use utils::{new_surface_extent, new_window, window_sizes};
 
 fn main() {
     let event_loop: EventLoop<()> = EventLoop::new();
 
     let (logical_size, physical_size) = window_sizes(&event_loop);
 
-    let window = WindowBuilder::new()
-        .with_title(APP_NAME)
-        .with_inner_size(logical_size)
-        .build(&event_loop)
-        .expect("Failed to create window");
-
+    let window = new_window(APP_NAME, logical_size, &event_loop);
     // Surface to integrate vulkan into window
-    let surface_extent = create_surface_extent(&physical_size);
+    let surface_extent = new_surface_extent(&physical_size);
 
     let (instance, surface, adapter) = {
         let instance = backend::Instance::create(APP_NAME, 1).expect("Backend not supported");

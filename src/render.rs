@@ -20,8 +20,8 @@ use hal::{
 
 use crate::buffer::new_buffer;
 use crate::pipeline::new_pipeline;
-use crate::test_values::MESH;
-use crate::types::Vertex;
+use crate::test_values::{MESH, TRIANGLE};
+use crate::types::{Rectangle, Triangle, Vertex};
 use crate::utils::{drop, undrop};
 
 pub struct Renderer<B: hal::Backend> {
@@ -130,7 +130,30 @@ impl<B: hal::Backend> Renderer<B> {
                 .expect("Out of memory")
         };
 
-        let vertex_buffer_len = MESH.len() * std::mem::size_of::<Vertex>();
+        let mesh1: [Vertex; 3] = crate::utils::clone_into_array(&MESH[0..3]);
+        let mesh2: [Vertex; 3] = crate::utils::clone_into_array(&MESH[3..6]);
+
+        let mut triangle_1: Triangle = Triangle::from_slice(&TRIANGLE);
+
+        let triangle_2: Triangle = Triangle::from_slice(&mesh1);
+        let triangle_3: Triangle = Triangle::from_slice(&mesh2);
+
+        let verty = Vertex {
+            pos: [-0.2, -0.2, 0.0],
+            color: [1.0, 1.0, 1.0, 1.0],
+        };
+
+        triangle_1.change_vertex(0, &verty);
+
+        let data: Vec<Triangle> = vec![triangle_2, triangle_3, triangle_1];
+
+        let triangle_1: Triangle = Triangle::from_slice(&TRIANGLE);
+        println!("data: {:?}", data);
+        println!("triangle: {}", triangle_1.size());
+
+        let vertex_buffer_len = data.len() * std::mem::size_of::<Triangle>();
+
+        println!("vertex buffer: {}", vertex_buffer_len);
 
         let (vertex_buffer_memory, vertex_buffer) = unsafe {
             new_buffer::<B>(
@@ -147,8 +170,7 @@ impl<B: hal::Backend> Renderer<B> {
                 .map_memory(&vertex_buffer_memory, Segment::ALL)
                 .expect("TODO");
 
-            ptr::copy(MESH.as_ptr() as *const u8, mapped_memory, vertex_buffer_len);
-
+            ptr::copy(data.as_ptr() as *const u8, mapped_memory, vertex_buffer_len);
             device
                 .flush_mapped_memory_ranges(vec![(&vertex_buffer_memory, Segment::ALL)])
                 .expect("TODO");
@@ -257,8 +279,6 @@ impl<B: hal::Backend> Renderer<B> {
                 .unwrap()
         };
 
-        let mesh = MESH;
-
         unsafe {
             use hal::command::{
                 ClearColor, ClearValue, CommandBuffer, CommandBufferFlags, SubpassContents,
@@ -286,7 +306,7 @@ impl<B: hal::Backend> Renderer<B> {
 
             self.command_buffers[0].bind_graphics_pipeline(&self.pipelines[0]);
 
-            let num_vertecies = mesh.len() as u32;
+            let num_vertecies = 9 as u32;
             self.command_buffers[0].draw(0..num_vertecies, 0..1);
 
             self.command_buffers[0].end_render_pass();
