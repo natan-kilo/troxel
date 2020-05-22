@@ -5,7 +5,6 @@ use hal::{
     adapter::Adapter,
     adapter::PhysicalDevice,
     buffer::Usage,
-    command::Level,
     device::Device,
     format::{ChannelType, Format},
     image::{self, Layout},
@@ -21,8 +20,7 @@ use hal::{
 use crate::buffer::new_buffer;
 use crate::pipeline::new_pipeline;
 use crate::test_values::{MESH, TRIANGLE};
-use crate::types::{Rectangle, Triangle, Vertex};
-use crate::utils::{drop, undrop};
+use crate::types::{Triangle, Vertex};
 
 pub struct Renderer<B: hal::Backend> {
     instance: B::Instance,
@@ -42,6 +40,8 @@ pub struct Renderer<B: hal::Backend> {
     viewport: Viewport,
     format: Format,
     queue_group: QueueGroup<B>,
+    frames_in_flight: usize,
+    frame: u64,
 }
 
 impl<B: hal::Backend> Renderer<B> {
@@ -70,14 +70,12 @@ impl<B: hal::Backend> Renderer<B> {
             (gpu.device, gpu.queue_groups.pop().unwrap())
         };
 
-        let (command_pool, command_buffer) = unsafe {
-            let mut command_pool = device
+        let command_pool = unsafe {
+            let command_pool = device
                 .create_command_pool(queue_group.family, CommandPoolCreateFlags::empty())
                 .expect("Out of memory");
 
-            let command_buffer = command_pool.allocate_one(Level::Primary);
-
-            (command_pool, command_buffer)
+            command_pool
         };
 
         let format = {
@@ -130,54 +128,6 @@ impl<B: hal::Backend> Renderer<B> {
                 .expect("Out of memory")
         };
 
-        let mesh1: [Vertex; 3] = crate::utils::clone_into_array(&MESH[0..3]);
-        let mesh2: [Vertex; 3] = crate::utils::clone_into_array(&MESH[3..6]);
-
-        let mut triangle_1: Triangle = Triangle::from_slice(&TRIANGLE);
-
-        let triangle_2: Triangle = Triangle::from_slice(&mesh1);
-        let triangle_3: Triangle = Triangle::from_slice(&mesh2);
-
-        let verty = Vertex {
-            pos: [-0.2, -0.2, 0.0],
-            color: [1.0, 1.0, 1.0, 1.0],
-        };
-
-        triangle_1.change_vertex(0, &verty);
-
-        let data: Vec<Triangle> = vec![triangle_2, triangle_3, triangle_1];
-
-        let triangle_1: Triangle = Triangle::from_slice(&TRIANGLE);
-        println!("data: {:?}", data);
-        println!("triangle: {}", triangle_1.size());
-
-        let vertex_buffer_len = data.len() * std::mem::size_of::<Triangle>();
-
-        println!("vertex buffer: {}", vertex_buffer_len);
-
-        let (vertex_buffer_memory, vertex_buffer) = unsafe {
-            new_buffer::<B>(
-                &device,
-                &adapter.physical_device,
-                vertex_buffer_len,
-                Usage::VERTEX,
-                Properties::CPU_VISIBLE,
-            )
-        };
-
-        unsafe {
-            let mapped_memory = device
-                .map_memory(&vertex_buffer_memory, Segment::ALL)
-                .expect("TODO");
-
-            ptr::copy(data.as_ptr() as *const u8, mapped_memory, vertex_buffer_len);
-            device
-                .flush_mapped_memory_ranges(vec![(&vertex_buffer_memory, Segment::ALL)])
-                .expect("TODO");
-
-            device.unmap_memory(&vertex_buffer_memory);
-        }
-
         let vertex_shader = include_str!("../assets/shaders/shader.vs");
         let fragment_shader = include_str!("../assets/shaders/shader.fs");
 
@@ -195,34 +145,81 @@ impl<B: hal::Backend> Renderer<B> {
             rect: hal::pso::Rect {
                 x: 0,
                 y: 0,
-                w: dimensions.width as i16,
-                h: dimensions.height as i16,
+                w: dimensions.width as _,
+                h: dimensions.height as _,
             },
             depth: 0.0..1.0,
         };
 
-        let submission_complete_fence: B::Fence = device.create_fence(true).expect("Out of memory");
-        let rendering_complete_semaphore: B::Semaphore =
-            device.create_semaphore().expect("Out of memory");
+        // presetting a value for a vertex buffer with the max value of 1024 triangles
+        let vertex_buffer_len = 1024 * std::mem::size_of::<Triangle>();
+
+        let (vertex_buffer_memory, vertex_buffer) = unsafe {
+            new_buffer::<B>(
+                &device,
+                &adapter.physical_device,
+                vertex_buffer_len,
+                Usage::VERTEX,
+                Properties::CPU_VISIBLE,
+            )
+        };
+
+        let frames_in_flight = 3;
+
+        //device.create_fence(true).expect("Out of memory");
+        let mut submission_complete_semaphores: Vec<B::Semaphore> =
+            Vec::with_capacity(frames_in_flight);
+        let mut submission_complete_fences: Vec<B::Fence> = Vec::with_capacity(frames_in_flight);
+
+        let mut command_pools: Vec<B::CommandPool> = Vec::with_capacity(frames_in_flight);
+        let mut command_buffers: Vec<B::CommandBuffer> = Vec::with_capacity(frames_in_flight);
+
+        command_pools.push(command_pool);
+        for _ in 1..frames_in_flight {
+            unsafe {
+                command_pools.push(
+                    device
+                        .create_command_pool(
+                            queue_group.family,
+                            hal::pool::CommandPoolCreateFlags::empty(),
+                        )
+                        .expect("Can't create command pool"),
+                );
+            }
+        }
+
+        for i in 0..frames_in_flight {
+            submission_complete_semaphores.push(
+                device
+                    .create_semaphore()
+                    .expect("Could not create semaphore"),
+            );
+            submission_complete_fences
+                .push(device.create_fence(true).expect("Could not create fence"));
+            command_buffers
+                .push(unsafe { command_pools[i].allocate_one(hal::command::Level::Primary) });
+        }
 
         Renderer {
             instance,
-            surface: drop(surface),
+            surface: ManuallyDrop::new(surface),
             adapter,
             device,
-            render_passes: drop(vec![render_pass]),
-            pipeline_layouts: drop(vec![pipeline_layout]),
-            pipelines: drop(vec![pipeline]),
-            buffer: drop(vec![vertex_buffer]),
-            buffer_memory: drop(vec![vertex_buffer_memory]),
-            command_pools: vec![command_pool],
-            command_buffers: vec![command_buffer],
-            submission_complete_semaphores: vec![rendering_complete_semaphore],
-            submission_complete_fences: vec![submission_complete_fence],
+            render_passes: ManuallyDrop::new(vec![render_pass]),
+            pipeline_layouts: ManuallyDrop::new(vec![pipeline_layout]),
+            pipelines: ManuallyDrop::new(vec![pipeline]),
+            buffer: ManuallyDrop::new(vec![vertex_buffer]),
+            buffer_memory: ManuallyDrop::new(vec![vertex_buffer_memory]),
+            command_pools: command_pools,
+            command_buffers: command_buffers,
+            submission_complete_semaphores: submission_complete_semaphores,
+            submission_complete_fences: submission_complete_fences,
             dimensions,
             viewport,
             format,
             queue_group,
+            frames_in_flight,
+            frame: 0,
         }
     }
 
@@ -230,31 +227,18 @@ impl<B: hal::Backend> Renderer<B> {
         let caps = self.surface.capabilities(&self.adapter.physical_device);
         let swap_config =
             hal::window::SwapchainConfig::from_caps(&caps, self.format, self.dimensions);
-        let extent = swap_config.extent.to_extent();
+        let dimensions = swap_config.extent.to_extent();
 
         unsafe {
             self.surface
                 .configure_swapchain(&self.device, swap_config)
                 .expect("Can't create swapchain");
         }
-        self.viewport.rect.w = extent.width as i16;
-        self.viewport.rect.h = extent.height as i16;
+        self.viewport.rect.w = dimensions.width as _;
+        self.viewport.rect.h = dimensions.height as _;
     }
 
     pub fn render(&mut self) {
-        let render_timeout_ns = 1_000_000_000;
-        unsafe {
-            self.device
-                .wait_for_fence(&self.submission_complete_fences[0], render_timeout_ns)
-                .expect("Out of memory");
-
-            self.device
-                .reset_fence(&self.submission_complete_fences[0])
-                .expect("Out of memory");
-
-            self.command_pools[0].reset(false);
-        };
-
         let surface_image = unsafe {
             match self.surface.acquire_image(!0) {
                 Ok((image, _)) => image,
@@ -279,20 +263,73 @@ impl<B: hal::Backend> Renderer<B> {
                 .unwrap()
         };
 
+        let frame_idx = self.frame as usize % self.frames_in_flight;
+
+        unsafe {
+            let fence = &self.submission_complete_fences[frame_idx];
+            self.device
+                .wait_for_fence(fence, !0)
+                .expect("Failed to wait for fence");
+            self.device
+                .reset_fence(fence)
+                .expect("Failed to reset fence");
+            self.command_pools[frame_idx].reset(false);
+        }
+
+        let command_buffer = &mut self.command_buffers[frame_idx];
+
+        let mesh1: [Vertex; 3] = crate::utils::clone_into_array(&MESH[0..3]);
+        let mesh2: [Vertex; 3] = crate::utils::clone_into_array(&MESH[3..6]);
+
+        let mut triangle_1: Triangle = Triangle::from_slice(&TRIANGLE);
+
+        let triangle_2: Triangle = Triangle::from_slice(&mesh1);
+        let triangle_3: Triangle = Triangle::from_slice(&mesh2);
+
+        let verty = Vertex {
+            pos: [-0.2, -0.2, 0.0],
+            color: [1.0, 1.0, 1.0, 1.0],
+        };
+
+        triangle_1.change_vertex(0, &verty);
+
+        let data: Vec<Triangle> = vec![triangle_2, triangle_3, triangle_1];
+        let num_vertecies = (data.len() * 3) as u32;
+
+        let data_mem_len = data.len() * std::mem::size_of::<Triangle>();
+
+        unsafe {
+            let mapped_memory = self
+                .device
+                .map_memory(&self.buffer_memory[0], Segment::ALL)
+                .expect("TODO");
+
+            ptr::copy(data.as_ptr() as *const u8, mapped_memory, data_mem_len);
+            self.device
+                .flush_mapped_memory_ranges(vec![(&self.buffer_memory[0], Segment::ALL)])
+                .expect("TODO");
+
+            self.device.unmap_memory(&self.buffer_memory[0]);
+        }
+
         unsafe {
             use hal::command::{
                 ClearColor, ClearValue, CommandBuffer, CommandBufferFlags, SubpassContents,
             };
 
-            self.command_buffers[0].begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
+            command_buffer.begin_primary(CommandBufferFlags::ONE_TIME_SUBMIT);
 
-            self.command_buffers[0].set_viewports(0, &[self.viewport.clone()]);
-            self.command_buffers[0].set_scissors(0, &[self.viewport.rect]);
+            command_buffer.set_viewports(0, &[self.viewport.clone()]);
+            command_buffer.set_scissors(0, &[self.viewport.rect]);
 
-            self.command_buffers[0]
-                .bind_vertex_buffers(0, vec![(&self.buffer[0], hal::buffer::SubRange::WHOLE)]);
+            command_buffer.bind_graphics_pipeline(&self.pipelines[0]);
 
-            self.command_buffers[0].begin_render_pass(
+            command_buffer.bind_vertex_buffers(
+                0,
+                iter::once((&self.buffer[0], hal::buffer::SubRange::WHOLE)),
+            );
+
+            command_buffer.begin_render_pass(
                 &self.render_passes[0],
                 &framebuffer,
                 self.viewport.rect,
@@ -304,39 +341,39 @@ impl<B: hal::Backend> Renderer<B> {
                 SubpassContents::Inline,
             );
 
-            self.command_buffers[0].bind_graphics_pipeline(&self.pipelines[0]);
+            command_buffer.draw(0..num_vertecies, 0..1);
 
-            let num_vertecies = 9 as u32;
-            self.command_buffers[0].draw(0..num_vertecies, 0..1);
-
-            self.command_buffers[0].end_render_pass();
-            self.command_buffers[0].finish();
+            command_buffer.end_render_pass();
+            command_buffer.finish();
         }
 
         unsafe {
             use hal::queue::{CommandQueue, Submission};
 
             let submission = Submission {
-                command_buffers: &self.command_buffers,
+                command_buffers: iter::once(&*command_buffer),
                 wait_semaphores: None,
-                signal_semaphores: &self.submission_complete_semaphores,
+                signal_semaphores: iter::once(&self.submission_complete_semaphores[frame_idx]),
             };
 
-            self.queue_group.queues[0]
-                .submit(submission, Some(&self.submission_complete_fences[0]));
+            self.queue_group.queues[0].submit(
+                submission,
+                Some(&self.submission_complete_fences[frame_idx]),
+            );
 
             let result = self.queue_group.queues[0].present_surface(
                 &mut self.surface,
                 surface_image,
-                Some(&self.submission_complete_semaphores[0]),
+                Some(&self.submission_complete_semaphores[frame_idx]),
             );
+
+            self.device.destroy_framebuffer(framebuffer);
 
             if result.is_err() {
                 self.renew_swapchain();
             }
-
-            self.device.destroy_framebuffer(framebuffer);
         }
+        self.frame += 1;
     }
 }
 
@@ -377,7 +414,8 @@ impl<B: gfx_hal::Backend> Drop for Renderer<B> {
             }
 
             self.surface.unconfigure_swapchain(&self.device);
-            self.instance.destroy_surface(undrop(&self.surface));
+            self.instance
+                .destroy_surface(ManuallyDrop::into_inner(ptr::read(&self.surface)));
         }
     }
 }
