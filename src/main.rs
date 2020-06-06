@@ -72,7 +72,6 @@ fn main() {
 
 struct State {
     surface: wgpu::Surface,
-    adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
     sc_desc: wgpu::SwapChainDescriptor,
@@ -128,7 +127,6 @@ impl State {
 
         Self {
             surface,
-            adapter,
             device,
             queue,
             sc_desc,

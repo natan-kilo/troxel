@@ -16,7 +16,7 @@ impl Stateful for ChaoticState {
         unimplemented!()
     }
 
-    fn update(&mut self, device: &mut Device, queue: &mut Queue) {
+    fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         unimplemented!()
     }
 

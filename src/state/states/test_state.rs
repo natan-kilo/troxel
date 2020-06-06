@@ -31,7 +31,6 @@ pub struct TestState {
 
 impl TestState {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, sc_desc: &wgpu::SwapChainDescriptor, size: &winit::dpi::PhysicalSize<u32>) -> Self {
-
         let diffuse_bytes = include_bytes!("../../../assets/images/cat.png");
 
         let (diffuse_texture, cmd_buffer) = texture::Texture::from_bytes(
@@ -249,7 +248,7 @@ impl Stateful for TestState {
         render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
     }
 
-    fn update(&mut self, device: &mut wgpu::Device, queue: &mut wgpu::Queue) {
+    fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         self.camera_controller.update_camera(&mut self.camera);
         self.uniforms.update_view_proj(&self.camera);
 
