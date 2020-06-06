@@ -16,11 +16,24 @@ mod types;
 mod utils;
 mod texture;
 mod camera;
+mod state;
+
+use state::traits::Stateful;
 
 use types::{Vertex, VertexC, Rectangle};
 use crate::camera::{Camera, CameraController, Uniforms};
 
 fn main() {
+    let menu_state = Box::new(state::states::menu_state::MenuState::new());
+    let test_state = Box::new(state::states::test_state::TestState::new());
+    let chaotic_state = Box::new(state::states::chaotic_state::ChaoticState::new());
+
+    let states: Vec<Box<dyn Stateful>> = vec![test_state, menu_state, chaotic_state];
+
+    let mut state_handler = state::state_handler::StateHandler::new();
+    state_handler.add_states(states);
+
+
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title(config::APP_NAME)
