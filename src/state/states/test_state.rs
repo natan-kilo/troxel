@@ -3,6 +3,7 @@ use glsl_to_spirv::ShaderType;
 use std::any::Any;
 
 use crate::camera;
+use crate::render;
 use crate::render::texture;
 use crate::types::Vertex;
 use wgpu::{Device, SwapChainDescriptor};
@@ -119,11 +120,15 @@ impl TestState {
             label: Some("uniform_bind_group"),
         });
 
-        let vs_src = include_str!("../../../assets/shaders/shader_tex.vert");
-        let fs_src = include_str!("../../../assets/shaders/shader_tex.frag");
+        let vs_module = render::shader::create_shader_module(
+            include_str!("../../../assets/shaders/shader_tex.vert"),
+            ShaderType::Vertex,
+            &device);
 
-        let vs_module = crate::utils::create_shader_module(vs_src, ShaderType::Vertex, &device);
-        let fs_module = crate::utils::create_shader_module(fs_src, ShaderType::Fragment, &device);
+        let fs_module = render::shader::create_shader_module(
+            include_str!("../../../assets/shaders/shader_tex.frag"),
+            ShaderType::Fragment,
+            &device);
 
         let depth_texture =
             texture::Texture::new_depth(&device, &sc_desc, "depth_texture");
