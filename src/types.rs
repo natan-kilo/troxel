@@ -27,7 +27,8 @@ impl Vertex {
                     format: wgpu::VertexFormat::Float4,
                 },
                 wgpu::VertexAttributeDescriptor {
-                    offset: (mem::size_of::<[f32; 4]>() + mem::size_of::<[f32; 3]>()) as wgpu::BufferAddress,
+                    offset: (mem::size_of::<[f32; 4]>() + mem::size_of::<[f32; 3]>())
+                        as wgpu::BufferAddress,
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float2,
                 },
@@ -38,7 +39,6 @@ impl Vertex {
 
 unsafe impl bytemuck::Pod for Vertex {}
 unsafe impl bytemuck::Zeroable for Vertex {}
-
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -58,7 +58,7 @@ impl VertexC {
                 wgpu::VertexAttributeDescriptor {
                     offset: 0,
                     shader_location: 0,
-                    format: wgpu::VertexFormat::Float3
+                    format: wgpu::VertexFormat::Float3,
                 },
                 wgpu::VertexAttributeDescriptor {
                     offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
@@ -72,7 +72,6 @@ impl VertexC {
 
 unsafe impl bytemuck::Pod for VertexC {}
 unsafe impl bytemuck::Zeroable for VertexC {}
-
 
 #[derive(Copy, Clone, Debug)]
 pub struct Triangle {
@@ -114,7 +113,6 @@ impl Triangle {
 unsafe impl bytemuck::Pod for Triangle {}
 unsafe impl bytemuck::Zeroable for Triangle {}
 
-
 // DATA ASSUMES:
 // VERTICES     TRIANGLE VERTICES
 // 0 -> 1       0.0 -> 0.1 / 1.0
@@ -131,22 +129,21 @@ impl Rectangle {
     pub fn new(data: &[Vertex; 4]) -> Self {
         let vertices = *data;
         let indices = [2, 3];
-        Self {
-            vertices,
-            indices,
-        }
+        Self { vertices, indices }
     }
 
     pub fn from_triangles(data: &[Triangle; 2]) -> Self {
         let triangles = *data;
         let vertices_tri0 = triangles[0].vertices;
         let vertices_tri1 = triangles[1].vertices;
-        let vertices = [vertices_tri0[0], vertices_tri0[1], vertices_tri0[2], vertices_tri0[2]];
+        let vertices = [
+            vertices_tri0[0],
+            vertices_tri0[1],
+            vertices_tri0[2],
+            vertices_tri0[2],
+        ];
         let indices = [2, 3];
-        Self {
-            vertices,
-            indices,
-        }
+        Self { vertices, indices }
     }
 }
 

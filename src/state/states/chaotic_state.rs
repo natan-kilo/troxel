@@ -1,9 +1,9 @@
 use crate::state::traits::Stateful;
 use std::any::Any;
-use wgpu::{Device, SwapChain, Queue, SwapChainDescriptor};
+use wgpu::{Device, Queue, SwapChain, SwapChainDescriptor};
 use winit::event::WindowEvent;
 
-pub struct ChaoticState { }
+pub struct ChaoticState {}
 
 impl ChaoticState {
     pub fn new() -> Self {
@@ -24,7 +24,12 @@ impl Stateful for ChaoticState {
         unimplemented!()
     }
 
-    fn resize(&mut self, device: &mut Device, sc_desc: &mut SwapChainDescriptor, size: &winit::dpi::PhysicalSize<u32>) {
+    fn resize(
+        &mut self,
+        device: &mut Device,
+        sc_desc: &mut SwapChainDescriptor,
+        size: &winit::dpi::PhysicalSize<u32>,
+    ) {
         unimplemented!()
     }
 
