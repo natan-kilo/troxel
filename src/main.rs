@@ -40,17 +40,8 @@ fn main() {
                 ref event,
                 window_id,
             } if window_id == window.id() => {
-                if !state.input(event) {
+                if !state.input(event, control_flow) {
                     match event {
-                        WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                        WindowEvent::KeyboardInput { input, .. } => match input {
-                            KeyboardInput {
-                                state: ElementState::Pressed,
-                                virtual_keycode: Some(VirtualKeyCode::Escape),
-                                ..
-                            } => *control_flow = ControlFlow::Exit,
-                            _ => {}
-                        },
                         WindowEvent::Resized(physical_size) => {
                             state.resize(*physical_size);
                         }
@@ -123,11 +114,13 @@ impl State {
 
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
-        let mut state_handler = StateHandler::new();
+        let mut state_handler = StateHandler::new(&device, &sc_desc);
 
         state_handler.add_state(Box::new(state::states::test_state::TestState::new(
             &device, &queue, &sc_desc, &size,
         )));
+
+        state_handler.set_state(state::states::state_ids::TEST);
 
         Self {
             surface,
@@ -144,7 +137,7 @@ impl State {
     }
 
     fn update(&mut self) {
-        self.state_handler.states[1].update(&mut self.device, &mut self.queue);
+        self.state_handler.states[self.state_handler.current_state_in_vec].update(&mut self.device, &mut self.queue);
     }
 
     fn render(&mut self) {
@@ -158,7 +151,8 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
-        self.state_handler.states[1].render(&frame, &mut encoder);
+
+        self.state_handler.states[self.state_handler.current_state_in_vec].render(&frame, &mut encoder);
 
         self.queue.submit(&[encoder.finish()]);
     }
@@ -167,14 +161,30 @@ impl State {
         self.size = new_size;
         self.sc_desc.width = new_size.width;
         self.sc_desc.height = new_size.height;
+        self.state_handler.states[self.state_handler.current_state_in_vec].resize(&mut self.device, &mut self.sc_desc, &self.size);
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
-        self.state_handler.states[1].resize(&mut self.device, &mut self.sc_desc, &self.size);
     }
 
-    fn input(&mut self, event: &WindowEvent) -> bool {
-        match event {
-            _ => false,
-        };
-        self.state_handler.states[1].input(event)
+    // RESIZE STATE AFTER STATE CHANGE TO FULFILL ASSERTION
+    fn input(&mut self, event: &WindowEvent, control_flow: &mut ControlFlow) -> bool {
+        if self.input.key_released(VirtualKeyCode::Escape) || self.input.quit() {
+            *control_flow = ControlFlow::Exit;
+            return false
+        }
+        if self.input.key_pressed(VirtualKeyCode::F1) {
+            self.state_handler.set_state(0);
+            self.state_handler.states[self.state_handler.current_state_in_vec].resize(&mut self.device, &mut self.sc_desc, &self.size);
+
+        }
+        if self.input.key_pressed(VirtualKeyCode::F2) {
+            self.state_handler.set_state(1);
+            self.state_handler.states[self.state_handler.current_state_in_vec].resize(&mut self.device, &mut self.sc_desc, &self.size);
+
+        }
+        if self.input.key_pressed(VirtualKeyCode::F3) {
+            self.state_handler.set_state(2);
+            self.state_handler.states[self.state_handler.current_state_in_vec].resize(&mut self.device, &mut self.sc_desc, &self.size);
+        }
+        self.state_handler.states[self.state_handler.current_state_in_vec].input(event)
     }
 }
