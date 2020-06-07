@@ -44,10 +44,21 @@ impl Texture {
 
         let sampler = device.create_sampler(&default_sampler_descriptor());
 
-        (Self {texture, view, sampler}, cmd_buffer)
+        (
+            Self {
+                texture,
+                view,
+                sampler,
+            },
+            cmd_buffer,
+        )
     }
 
-    pub fn new_depth(device: &wgpu::Device, sc_desc: &wgpu::SwapChainDescriptor, label: &str) -> Self {
+    pub fn new_depth(
+        device: &wgpu::Device,
+        sc_desc: &wgpu::SwapChainDescriptor,
+        label: &str,
+    ) -> Self {
         let size = create_size((sc_desc.width, sc_desc.height), 1);
 
         let texture = device.create_texture(&create_texture_descriptor(
@@ -58,14 +69,20 @@ impl Texture {
             1,
             wgpu::TextureDimension::D2,
             DEPTH_FORMAT,
-            wgpu::TextureUsage::OUTPUT_ATTACHMENT | wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_SRC,
+            wgpu::TextureUsage::OUTPUT_ATTACHMENT
+                | wgpu::TextureUsage::SAMPLED
+                | wgpu::TextureUsage::COPY_SRC,
         ));
 
         let view = texture.create_default_view();
 
         let sampler = device.create_sampler(&default_sampler_descriptor());
 
-        Self {texture, view, sampler}
+        Self {
+            texture,
+            view,
+            sampler,
+        }
     }
 }
 
@@ -76,7 +93,6 @@ fn create_size(size: (u32, u32), depth: u32) -> wgpu::Extent3d {
         depth,
     }
 }
-
 
 fn create_texture_descriptor(
     label: &str,

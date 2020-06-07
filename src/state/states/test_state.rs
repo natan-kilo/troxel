@@ -4,6 +4,7 @@ use std::any::Any;
 
 use crate::camera;
 use crate::render;
+use crate::render::pipeline;
 use crate::render::texture;
 use crate::types::Vertex;
 use wgpu::{Device, SwapChainDescriptor};
@@ -42,26 +43,10 @@ impl TestState {
 
         queue.submit(&[cmd_buffer]);
 
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                bindings: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::SampledTexture {
-                            multisampled: false,
-                            dimension: wgpu::TextureViewDimension::D2,
-                            component_type: wgpu::TextureComponentType::Uint,
-                        },
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler { comparison: false },
-                    },
-                ],
-                label: Some("texture_bind_group_layout"),
-            });
+        let texture_bind_group_layout = render::pipeline::default_texture_bind_group_layout(
+            &device,
+            "texture_bind_group_layout",
+        );
 
         let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &texture_bind_group_layout,
@@ -123,62 +108,35 @@ impl TestState {
         let vs_module = render::shader::create_shader_module(
             include_str!("../../../assets/shaders/shader_tex.vert"),
             ShaderType::Vertex,
-            &device);
+            &device,
+        );
 
         let fs_module = render::shader::create_shader_module(
             include_str!("../../../assets/shaders/shader_tex.frag"),
             ShaderType::Fragment,
-            &device);
+            &device,
+        );
 
-        let depth_texture =
-            texture::Texture::new_depth(&device, &sc_desc, "depth_texture");
+        let depth_texture = texture::Texture::new_depth(&device, &sc_desc, "depth_texture");
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 bind_group_layouts: &[&texture_bind_group_layout, &uniform_bind_group_layout],
             });
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            layout: &render_pipeline_layout,
-            vertex_stage: wgpu::ProgrammableStageDescriptor {
-                module: &vs_module,
-                entry_point: "main",
-            },
-            fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-                module: &fs_module,
-                entry_point: "main",
-            }),
-            rasterization_state: Some(wgpu::RasterizationStateDescriptor {
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: wgpu::CullMode::Back,
-                depth_bias: 0,
-                depth_bias_slope_scale: 0.0,
-                depth_bias_clamp: 0.0,
-            }),
-            color_states: &[wgpu::ColorStateDescriptor {
-                format: sc_desc.format,
-                color_blend: wgpu::BlendDescriptor::REPLACE,
-                alpha_blend: wgpu::BlendDescriptor::REPLACE,
-                write_mask: wgpu::ColorWrite::all(),
-            }],
-            primitive_topology: wgpu::PrimitiveTopology::TriangleList,
-            depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
-                format: texture::DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
-                stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
-                stencil_read_mask: 0,
-                stencil_write_mask: 0,
-            }),
-            vertex_state: wgpu::VertexStateDescriptor {
-                index_format: wgpu::IndexFormat::Uint16,
-                vertex_buffers: &[Vertex::desc()],
-            },
-            sample_count: 1,
-            sample_mask: !0,
-            alpha_to_coverage_enabled: true,
-        });
+        let render_pipeline = pipeline::create_render_pipeline(
+            &device,
+            &render_pipeline_layout,
+            wgpu::PrimitiveTopology::TriangleList,
+            &vs_module,
+            &fs_module,
+            sc_desc.format.clone(),
+            render::texture::DEPTH_FORMAT,
+            &[Vertex::desc()],
+            true,
+            "main"
+        );
+
 
         let vertex_buffer = device
             .create_buffer_with_data(bytemuck::cast_slice(VERTICES), wgpu::BufferUsage::VERTEX);
@@ -294,8 +252,7 @@ impl Stateful for TestState {
         size: &winit::dpi::PhysicalSize<u32>,
     ) {
         self.size = size.clone();
-        self.depth_texture =
-            texture::Texture::new_depth(&device, &sc_desc, "depth_texture");
+        self.depth_texture = texture::Texture::new_depth(&device, &sc_desc, "depth_texture");
     }
 
     fn id(&self) -> usize {
