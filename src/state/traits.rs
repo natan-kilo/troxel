@@ -5,7 +5,12 @@ pub trait Stateful: Any {
     fn render(&mut self, frame: &wgpu::SwapChainOutput, encoder: &mut wgpu::CommandEncoder);
     fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue);
     fn input(&mut self, event: &winit::event::WindowEvent) -> bool;
-    fn resize(&mut self, device: &mut wgpu::Device, sc_desc: &mut wgpu::SwapChainDescriptor, size: &winit::dpi::PhysicalSize<u32>);
+    fn resize(
+        &mut self,
+        device: &mut wgpu::Device,
+        sc_desc: &mut wgpu::SwapChainDescriptor,
+        size: &winit::dpi::PhysicalSize<u32>,
+    );
     fn id(&self) -> usize;
     fn box_eq(&self, other: &dyn Any) -> bool;
     fn as_any(&self) -> &dyn Any;

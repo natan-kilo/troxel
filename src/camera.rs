@@ -1,5 +1,5 @@
 use cgmath::SquareMatrix;
-use winit::event::{VirtualKeyCode, ElementState, WindowEvent, KeyboardInput};
+use winit::event::{ElementState, KeyboardInput, VirtualKeyCode, WindowEvent};
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
 const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
@@ -12,7 +12,7 @@ const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct Uniforms {
-    view_proj: cgmath::Matrix4<f32>
+    view_proj: cgmath::Matrix4<f32>,
 }
 
 impl Uniforms {
@@ -43,7 +43,12 @@ pub struct Camera {
 impl Camera {
     fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
         let view = cgmath::Matrix4::look_at(self.eye, self.target, self.up);
-        let proj = cgmath::perspective(cgmath::Deg(self.fov_y), self.aspect, self.z_near, self.z_far);
+        let proj = cgmath::perspective(
+            cgmath::Deg(self.fov_y),
+            self.aspect,
+            self.z_near,
+            self.z_far,
+        );
 
         OPENGL_TO_WGPU_MATRIX * proj * view
     }
@@ -75,11 +80,12 @@ impl CameraController {
     pub fn process_events(&mut self, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::KeyboardInput {
-                input: KeyboardInput {
-                    state,
-                    virtual_keycode: Some(keycode),
-                    ..
-                },
+                input:
+                    KeyboardInput {
+                        state,
+                        virtual_keycode: Some(keycode),
+                        ..
+                    },
                 ..
             } => {
                 let is_pressed = *state == ElementState::Pressed;

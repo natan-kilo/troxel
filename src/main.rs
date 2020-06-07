@@ -8,21 +8,20 @@ use winit::{
 
 use futures::executor::block_on;
 use glsl_to_spirv::ShaderType;
-use wgpu::{ShaderModule, RenderPassDescriptor};
+use wgpu::{RenderPassDescriptor, ShaderModule};
 
-
+mod camera;
 mod config;
+mod render;
+mod state;
 mod types;
 mod utils;
-mod texture;
-mod camera;
-mod state;
 
 use state::traits::Stateful;
 
-use types::{Vertex, VertexC, Rectangle};
 use crate::camera::{Camera, CameraController, Uniforms};
 use crate::state::state_handler::StateHandler;
+use types::{Rectangle, Vertex, VertexC};
 
 fn main() {
     let event_loop = EventLoop::new();
@@ -119,11 +118,9 @@ impl State {
 
         let mut state_handler = StateHandler::new();
 
-        state_handler.add_state(Box::new(
-            state::states::test_state::TestState::new(
-                &device, &queue, &sc_desc, &size
-            )
-        ));
+        state_handler.add_state(Box::new(state::states::test_state::TestState::new(
+            &device, &queue, &sc_desc, &size,
+        )));
 
         Self {
             surface,
@@ -143,10 +140,14 @@ impl State {
     }
 
     fn render(&mut self) {
-        let frame = self.swap_chain.get_next_texture().expect("Timeout getting texture");
-        let mut encoder = self.device
+        let frame = self
+            .swap_chain
+            .get_next_texture()
+            .expect("Timeout getting texture");
+        let mut encoder = self
+            .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder")
+                label: Some("Render Encoder"),
             });
 
         self.state_handler.states[1].render(&frame, &mut encoder);

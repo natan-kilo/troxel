@@ -1,5 +1,5 @@
-use crate::state::traits::Stateful;
 use crate::state::states::none_sate::NoneState;
+use crate::state::traits::Stateful;
 
 pub struct StateHandler {
     pub states: Vec<Box<dyn Stateful>>,
@@ -14,7 +14,7 @@ impl StateHandler {
         states.push(none_state);
         Self {
             states,
-            current_state_id: none_state_id
+            current_state_id: none_state_id,
         }
     }
 
@@ -34,9 +34,9 @@ impl StateHandler {
             self.current_state_id = 0;
         }
 
-        &self.states.remove(
-            self.states.iter().position(|s| s.id() == state_id).unwrap()
-        );
+        &self
+            .states
+            .remove(self.states.iter().position(|s| s.id() == state_id).unwrap());
     }
 
     pub fn set_state(&mut self, state_id: usize) {
