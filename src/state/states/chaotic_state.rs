@@ -130,9 +130,7 @@ impl Stateful for ChaoticState {
                     a: 1.0,
                 },
             }],
-            depth_stencil_attachment:
-            // None,
-            Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
                 attachment: &self.depth_texture.view,
                 depth_load_op: wgpu::LoadOp::Clear,
                 depth_store_op: wgpu::StoreOp::Store,
@@ -210,15 +208,28 @@ use glsl_to_spirv::ShaderType;
 use winit_input_helper::WinitInputHelper;
 
 const VERTICES: &[VertexC] = &[
-    VertexC { position: [-0.0868241, 0.49240386, 0.0], color: [0.5, 0.0, 0.5, 1.0] }, // A
-    VertexC { position: [-0.49513406, 0.06958647, 0.0], color: [0.5, 0.0, 0.5, 1.0] }, // B
-    VertexC { position: [-0.21918549, -0.44939706, 0.0], color: [0.5, 0.0, 0.5, 1.0] }, // C
-    VertexC { position: [0.35966998, -0.3473291, 0.0], color: [0.5, 0.0, 0.5, 1.0] }, // D
-    VertexC { position: [0.44147372, 0.2347359, 0.0],color: [0.5, 0.0, 0.5, 1.0] }, // E
+    VertexC { position: [-0.0868241, 0.49240386, 0.0], color: [0.5, 0.0, 0.5, 1.0] }, // 0
+    VertexC { position: [-0.49513406, 0.06958647, 0.0], color: [0.5, 0.0, 0.5, 1.0] }, // 1
+    VertexC { position: [-0.21918549, -0.44939706, 0.0], color: [0.5, 0.0, 0.5, 1.0] }, // 2
+    VertexC { position: [0.35966998, -0.3473291, 0.0], color: [0.5, 0.0, 0.5, 1.0] }, // 3
+    VertexC { position: [0.44147372, 0.2347359, 0.0],color: [0.5, 0.0, 0.5, 1.0] }, // 4
+
+    VertexC { position: [-10.0, -5.0, -10.0], color: [1.0, 0.0, 0.0, 1.0] }, // 5 R
+    VertexC { position: [-10.0, -5.0, 10.0],color: [0.0, 1.0, 0.0, 1.0] }, // 6  G
+    VertexC { position: [10.0, -5.0, -10.0], color: [0.0, 0.0, 1.0, 1.0] }, // 7 B
+    VertexC { position: [10.0, -5.0, 10.0], color: [0.5, 0.5, 0.5, 1.0] }, // 8
+
+    VertexC { position: [-10.0, -5.0, -10.0], color: [1.0, 0.0, 0.0, 1.0] }, // 9 R
+    VertexC { position: [-10.0, -5.0, 10.0],color: [0.0, 1.0, 0.0, 1.0] }, // 10  G
+    VertexC { position: [10.0, -5.0, -10.0], color: [0.0, 0.0, 1.0, 1.0] }, // 11 B
+    VertexC { position: [10.0, -5.0, 10.0], color: [0.5, 0.5, 0.5, 1.0] }, // 12
 ];
 
 const INDICES: &[u16] = &[
     0, 1, 4,
     1, 2, 4,
     2, 3, 4,
+
+    7, 5, 6,
+    6, 8, 7
 ];
