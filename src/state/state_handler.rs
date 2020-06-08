@@ -49,7 +49,7 @@ impl StateHandler {
     }
 
     pub fn set_state(&mut self, state_id: usize) {
-        assert!(state_id <= self.states.len());
+        println!("{}", state_id);
         let current_state_in_vec = self.states.iter()
             .position(|s| s.id() == state_id).unwrap();
         self.current_state_in_vec = current_state_in_vec;

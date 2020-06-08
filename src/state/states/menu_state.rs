@@ -2,6 +2,7 @@ use crate::state::traits::Stateful;
 use std::any::Any;
 use wgpu::{Device, Queue, SwapChain, SwapChainDescriptor};
 use winit::event::WindowEvent;
+use winit_input_helper::WinitInputHelper;
 
 pub struct MenuState {}
 
@@ -20,8 +21,8 @@ impl Stateful for MenuState {
         unimplemented!()
     }
 
-    fn input(&mut self, event: &WindowEvent) -> bool {
-        unimplemented!()
+    fn input(&mut self, input: &WinitInputHelper) -> bool {
+        false
     }
 
     fn resize(

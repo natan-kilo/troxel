@@ -4,6 +4,7 @@ use winit::event::WindowEvent;
 use crate::render::pipeline;
 use crate::render;
 use glsl_to_spirv::ShaderType;
+use winit_input_helper::WinitInputHelper;
 
 pub struct NoneState {
     render_pipeline: wgpu::RenderPipeline,
@@ -86,7 +87,7 @@ impl Stateful for NoneState {
 
     fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {}
 
-    fn input(&mut self, event: &WindowEvent) -> bool {
+    fn input(&mut self, input: &WinitInputHelper) -> bool {
         false
     }
 

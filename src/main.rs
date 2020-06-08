@@ -1,3 +1,5 @@
+extern crate nalgebra as na;
+
 use std::mem;
 
 use winit::{
@@ -17,6 +19,7 @@ mod render;
 mod state;
 mod types;
 mod utils;
+mod tools;
 
 use state::traits::Stateful;
 
@@ -120,7 +123,11 @@ impl State {
             &device, &queue, &sc_desc, &size,
         )));
 
-        state_handler.set_state(state::states::state_ids::TEST);
+        state_handler.add_state(Box::new(state::states::chaotic_state::ChaoticState::new(
+            &device, &queue, &sc_desc, &size,
+        )));
+
+        state_handler.set_state(state::states::state_ids::CHAOTIC);
 
         Self {
             surface,
@@ -151,8 +158,9 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
-
-        self.state_handler.states[self.state_handler.current_state_in_vec].render(&frame, &mut encoder);
+        {
+            self.state_handler.states[self.state_handler.current_state_in_vec].render(&frame, &mut encoder);
+        }
 
         self.queue.submit(&[encoder.finish()]);
     }
@@ -167,24 +175,30 @@ impl State {
 
     // RESIZE STATE AFTER STATE CHANGE TO FULFILL ASSERTION
     fn input(&mut self, event: &WindowEvent, control_flow: &mut ControlFlow) -> bool {
+        use crate::state::states::state_ids;
+
         if self.input.key_released(VirtualKeyCode::Escape) || self.input.quit() {
             *control_flow = ControlFlow::Exit;
             return false
         }
         if self.input.key_pressed(VirtualKeyCode::F1) {
-            self.state_handler.set_state(0);
+            self.state_handler.set_state(state_ids::NONE);
             self.state_handler.states[self.state_handler.current_state_in_vec].resize(&mut self.device, &mut self.sc_desc, &self.size);
 
         }
         if self.input.key_pressed(VirtualKeyCode::F2) {
-            self.state_handler.set_state(1);
+            self.state_handler.set_state(state_ids::TEST);
             self.state_handler.states[self.state_handler.current_state_in_vec].resize(&mut self.device, &mut self.sc_desc, &self.size);
 
         }
         if self.input.key_pressed(VirtualKeyCode::F3) {
-            self.state_handler.set_state(2);
+            self.state_handler.set_state(state_ids::MENU);
             self.state_handler.states[self.state_handler.current_state_in_vec].resize(&mut self.device, &mut self.sc_desc, &self.size);
         }
-        self.state_handler.states[self.state_handler.current_state_in_vec].input(event)
+        if self.input.key_pressed(VirtualKeyCode::F4) {
+            self.state_handler.set_state(state_ids::CHAOTIC);
+            self.state_handler.states[self.state_handler.current_state_in_vec].resize(&mut self.device, &mut self.sc_desc, &self.size);
+        }
+        self.state_handler.states[self.state_handler.current_state_in_vec].input(&self.input)
     }
 }

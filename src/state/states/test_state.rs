@@ -8,6 +8,7 @@ use crate::render::pipeline;
 use crate::render::texture;
 use crate::types::Vertex;
 use wgpu::{Device, SwapChainDescriptor};
+use winit_input_helper::WinitInputHelper;
 
 pub struct TestState {
     vertex_buffer: wgpu::Buffer,
@@ -228,21 +229,15 @@ impl Stateful for TestState {
         queue.submit(&[encoder.finish()]);
     }
 
-    fn input(&mut self, event: &winit::event::WindowEvent) -> bool {
-        use winit::event::*;
-        self.camera_controller.process_events(event);
-        match event {
-            WindowEvent::CursorMoved { position, .. } => {
-                self.clear_color = wgpu::Color {
-                    r: position.x as f64 / self.size.width as f64,
-                    g: position.y as f64 / self.size.height as f64,
-                    b: 1.0,
-                    a: 1.0,
-                };
-                true
-            }
-            _ => false,
-        }
+    fn input(&mut self, input: &WinitInputHelper) -> bool {
+        // self.camera_controller.process_events(input);
+        //     self.clear_color = wgpu::Color {
+        //         r: input.mouse().0 as f64 / self.size.width as f64,
+        //         g: input.mouse().1 as f64 / self.size.height as f64,
+        //         b: 1.0,
+        //         a: 1.0,
+        //     };
+        false
     }
 
     fn resize(
