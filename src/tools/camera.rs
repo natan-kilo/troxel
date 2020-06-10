@@ -15,16 +15,12 @@ use winit_input_helper::WinitInputHelper;
 use winit::event::VirtualKeyCode as vkc;
 use cgmath::num_traits::real::Real;
 
+use std::f32::consts::FRAC_PI_4;
 
 pub struct Camera {
     perspective: Perspective3<f32>,
     position: Vector3<f32>,
     rotation: UnitQuaternion<f32>,
-    angles: Vector3<f32>,
-    aspect: f32,
-    fov_y: f32,
-    z_near: f32,
-    z_far: f32,
 }
 
 impl Camera {
@@ -34,62 +30,22 @@ impl Camera {
         let z_near: f32 = 0.1;
         let z_far: f32 = 100.0;
         let perspective = Perspective3::new(aspect, fov_y, z_near, z_far);
-        let position = Vector3::new(0.0, 0.0, -2.0);
-        let rotation = UnitQuaternion::identity();
+        let position = Vector3::new(0.0, -0.0, -2.0);
+        let rotation = UnitQuaternion::from_euler_angles(0.0, 0.0, 0.0);
 
         Self {
             perspective,
             position,
             rotation,
-            angles: Vector3::new(0.0, 0.0, 0.0),
-            aspect,
-            fov_y,
-            z_near,
-            z_far,
         }
     }
 
-    pub fn update_position(&mut self, position: Vector3<f32>) {
-        self.position = position;
+    pub fn update_position(&mut self, position: &Vector3<f32>) {
+        self.position = position.clone();
     }
 
-    pub fn update_rotation(&mut self, target: &Vector2<f32>) {
-        if target.magnitude_squared() == 0.0 {
-            return;
-        }
-        let mut target: Vector3<f32> = Vector3::new(target.data[0], target.data[1], 0.0);
-        target.data[1] = -target.data[1];
-        let pi = std::f32::consts::PI;
-        let pi_2 = std::f32::consts::FRAC_PI_2;
-        let mut new_angles: Vector3<f32> = self.angles.clone() + target * 0.8 / 180.0 * pi;
-
-        if new_angles.data[1] < -pi_2 {
-            new_angles.data[1] = -pi_2
-        }
-        if new_angles.data[1] > pi_2 {
-            new_angles.data[1] = pi_2
-        }
-
-        println!("angles: {:?}", new_angles);
-        println!("target: {:?}", target);
-        self.angles = new_angles;
-        let direction_forward: Vector3<f32> = Vector3::new(
-            self.angles.data[0].sin(),
-            self.angles.data[1].sin(),
-            self.angles.data[0].cos(),
-        );
-
-        let direction_right: Vector3<f32> = Vector3::new(
-            (self.angles.data[0] - pi_2).sin(),
-            self.angles.data[1].sin(),
-            (self.angles.data[0] - pi_2).cos(),
-        );
-
-        let up: Vector3<f32> = direction_right.cross(&direction_forward);
-
-        let rotation = UnitQuaternion::face_towards(&direction_forward, &up);
-
-        self.rotation = rotation;
+    pub fn update_rotation(&mut self, rotation: &UnitQuaternion<f32>) {
+        self.rotation = rotation.clone();
     }
 
 
@@ -117,6 +73,7 @@ pub struct CameraController {
     is_s: bool,
     is_a: bool,
     is_d: bool,
+    is_con: bool,
     is_space: bool,
     is_shift: bool,
     is_q: bool,
@@ -133,6 +90,7 @@ impl CameraController {
         self.is_d = input.key_held(vkc::D);
         self.is_space = input.key_held(vkc::Space);
         self.is_shift = input.key_held(vkc::LShift);
+        self.is_con = input.key_held(vkc::LControl);
         self.mouse_coords = match input.mouse() {
             Some(coords) => {
                 Vector2::new(coords.0, coords.1)
@@ -145,56 +103,57 @@ impl CameraController {
 
     pub fn update(&mut self, camera: &mut Camera) {
         let mut new_position: Vector3<f32> = camera.position.clone();
-        let angles: Vector3<f32> = camera.angles.clone();
+        let current_rotation: UnitQuaternion<f32> = camera.rotation.clone().into();
+        let angles: (f32, f32, f32) = current_rotation.euler_angles();
+        let angle_vec: Vector3<f32> = Vector3::new(angles.1, angles.0, angles.2).normalize();
+        let mut speed = self.speed;
 
-        let pi = std::f32::consts::PI;
         let pi_2 = std::f32::consts::FRAC_PI_2;
+
+        match self.is_con {
+            true => {
+                speed *= 2.0;
+            }
+            false => { }
+        }
 
         match self.is_w {
             true => {
-                new_position.data[2] += angles.data[0].cos() * self.speed;
-                new_position.data[1] += -angles.data[1].sin() * self.speed;
-                new_position.data[0] += -angles.data[0].sin() * self.speed;
+                new_position.data[2] -= speed * angle_vec.data[0];
+                new_position.data[0] -= speed * angle_vec.data[0];
             }
             false => {}
         }
         match self.is_s {
             true => {
-                new_position.data[2] -= angles.data[0].cos() * self.speed;
-                new_position.data[1] -= -angles.data[1].sin() * self.speed;
-                new_position.data[0] -= -angles.data[0].sin() * self.speed;
+                new_position.data[2] += angles.1 * speed;
+                new_position.data[0] += angles.1 * speed;
             }
             false => {}
         }
         match self.is_a {
             true => {
-                new_position.data[2] -= (angles.data[0] + pi_2).cos() * self.speed;
-                new_position.data[1] -= -angles.data[1].sin() * self.speed;
-                new_position.data[0] -= -(angles.data[0] + pi_2).sin() * self.speed;
+                // new_position.data[2] -= (angles.0 + pi_2).cos() * speed;
+                // new_position.data[0] -= -(angles.data[0] + pi_2).sin() * speed;
             }
             false => {}
         }
         match self.is_d {
             true => {
-                new_position.data[2] += (angles.data[0] + pi_2).cos() * self.speed;
-                new_position.data[1] += -angles.data[1].sin() * self.speed;
-                new_position.data[0] += -(angles.data[0] + pi_2).sin() * self.speed;
+                // new_position.data[2] += (angles.data[0] + pi_2).cos() * speed;
+                // new_position.data[0] += -(angles.data[0] + pi_2).sin() * speed;
             }
             false => {}
         }
         match self.is_space {
             true => {
-                new_position.data[2] += angles.data[0].cos() * self.speed;
-                new_position.data[1] += -(angles.data[1] + pi_2).sin() * self.speed;
-                new_position.data[0] += -angles.data[0].sin() * self.speed;
+                new_position.data[1] += -speed;
             }
             false => {}
         }
         match self.is_shift {
             true => {
-                new_position.data[2] -= angles.data[0].cos() * self.speed;
-                new_position.data[1] -= -(angles.data[1] + pi_2).sin() * self.speed;
-                new_position.data[0] -= -angles.data[0].sin() * self.speed;
+                new_position.data[1] += speed;
             }
             false => {}
         }
@@ -210,13 +169,35 @@ impl CameraController {
             }
             false => {},
         }
+
         let mouse_delta: Vector2<f32> = self.mouse_coords.clone() - self.old_mouse_coords.clone();
+        self.old_mouse_coords = self.mouse_coords.clone();
 
-        self.old_mouse_coords = self.mouse_coords.into();
-
-        camera.update_position(new_position);
-        camera.update_rotation(&mouse_delta);
+        camera.update_position(&new_position);
+        let new_rotation = self.update_rotation(&mouse_delta, current_rotation);
+        camera.update_rotation(&new_rotation);
     }
+
+    pub fn update_rotation(&mut self, target: &Vector2<f32>, current_rotation: UnitQuaternion<f32>) -> UnitQuaternion<f32> {
+        if target.magnitude_squared() == 0.0 {
+            current_rotation;
+        }
+
+        let roll: f32 = target.data[1] / 100.0;
+        let pitch: f32 = target.data[0] / 100.0;
+
+        let current_euler: (f32, f32, f32) = current_rotation.euler_angles().clone();
+
+        let target_euler: (f32, f32, f32) = (target.data[0] / 100.0, target.data[1] / 100.0, 0.0);
+        let new_euler: (f32, f32, f32) = (current_euler.0 + target_euler.1, current_euler.1 + target_euler.0, current_euler.2);
+
+        println!("{:?}; {:?}", current_euler, new_euler);
+        let new_rotation = UnitQuaternion::from_euler_angles(new_euler.0,  new_euler.1, new_euler.2 );
+        // let new_rotation: UnitQuaternion<f32> = UnitQuaternion::from_euler_angles(new_euler.0, new_euler.1, new_euler.2);
+
+        new_rotation
+    }
+
 }
 
 impl Default for CameraController {
@@ -227,6 +208,7 @@ impl Default for CameraController {
             is_s: false,
             is_a: false,
             is_d: false,
+            is_con: false,
             is_space: false,
             is_shift: false,
             is_q: false,
