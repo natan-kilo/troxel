@@ -7,12 +7,14 @@ use uv::vec::Vec3;
 use uv::rotor::Rotor3;
 use uv::Isometry3;
 use crate::utils;
-use crate::utils::rotor_from_angles;
+use crate::utils::{rotor_from_angles, rad};
 use std::f32::consts::PI;
 
 pub struct Camera {
     perspective: Mat4,
     transformation: Isometry3,
+    aspect: f32,
+    fov: f32,
 }
 
 impl Camera {
@@ -28,7 +30,9 @@ impl Camera {
 
         Self {
             perspective,
-            transformation
+            transformation,
+            aspect,
+            fov: vertical_fov,
         }
     }
 
@@ -143,6 +147,8 @@ impl CameraController {
             }
             false => {},
         }
+
+        self.change_fov(camera, camera.fov - self.zoom * 5.0);
     }
 
     /// >:[
@@ -159,6 +165,34 @@ impl CameraController {
         let offset_rotor: Rotor3 = utils::rotor_from_angles(dy, dx, 0.0);
 
         camera.transformation.append_rotation(offset_rotor);
+    }
+
+    /// I can feel the suffer on it's way back to us
+    fn change_fov(&mut self, camera: &mut Camera, fov_angle: f32) {
+        // You want some flippy dippy or some zoomers?
+        if fov_angle >= 180.0 || fov_angle <  0.0 {
+            // how about no
+            self.zoom += if fov_angle >= 180.0 { 1.0 } else { -1.0 };
+            return;
+        }
+
+        let fov: f32 = rad(fov_angle);
+
+        // We don't do that here
+        if fov == camera.fov {
+            return;
+        }
+
+        // Don't even complain about the Variable names, I didn't
+        //  come up with them >:c
+        let t: f32 = (fov / 2.0).tan();
+        let sy: f32 = 1.0 / t;
+        let sx: f32 = sy / camera.aspect;
+
+        camera.perspective.cols[0].x = sx;
+        camera.perspective.cols[1].y = sy;
+
+        println!("FOV: {:?}", fov_angle);
     }
 }
 
