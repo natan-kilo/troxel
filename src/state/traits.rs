@@ -1,10 +1,11 @@
 use std::any::Any;
 use std::ops::Index;
+use winit_input_helper::WinitInputHelper;
 
 pub trait Stateful: Any {
     fn render(&mut self, frame: &wgpu::SwapChainOutput, encoder: &mut wgpu::CommandEncoder);
     fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue);
-    fn input(&mut self, event: &winit::event::WindowEvent) -> bool;
+    fn input(&mut self, input: &WinitInputHelper) -> bool;
     fn resize(
         &mut self,
         device: &mut wgpu::Device,

@@ -1,3 +1,5 @@
+extern crate ultraviolet as uv;
+
 use std::mem;
 
 use winit::{
@@ -9,6 +11,7 @@ use winit::{
 use futures::executor::block_on;
 use glsl_to_spirv::ShaderType;
 use wgpu::{RenderPassDescriptor, ShaderModule};
+use winit_input_helper::WinitInputHelper;
 
 mod camera;
 mod config;
@@ -16,12 +19,13 @@ mod render;
 mod state;
 mod types;
 mod utils;
+mod tools;
 
 use state::traits::Stateful;
 
-use crate::camera::{Camera, CameraController, Uniforms};
+
 use crate::state::state_handler::StateHandler;
-use types::{Rectangle, Vertex, VertexC};
+
 
 fn main() {
     let event_loop = EventLoop::new();
@@ -30,43 +34,39 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
+    window.set_cursor_grab(false);
+
     let mut state = block_on(State::new(&window));
 
-    event_loop.run(move |event, _, control_flow| match event {
-        Event::WindowEvent {
-            ref event,
-            window_id,
-        } if window_id == window.id() => {
-            if !state.input(event) {
-                match event {
-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                    WindowEvent::KeyboardInput { input, .. } => match input {
-                        KeyboardInput {
-                            state: ElementState::Pressed,
-                            virtual_keycode: Some(VirtualKeyCode::Escape),
-                            ..
-                        } => *control_flow = ControlFlow::Exit,
+    event_loop.run(move |event, _, control_flow| {
+        state.input.update(&event);
+        match event {
+            Event::WindowEvent {
+                ref event,
+                window_id,
+            } if window_id == window.id() => {
+                if !state.input(event, control_flow) {
+                    match event {
+                        WindowEvent::Resized(physical_size) => {
+                            state.resize(*physical_size);
+                        }
+                        WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                            state.resize(**new_inner_size);
+                        }
                         _ => {}
-                    },
-                    WindowEvent::Resized(physical_size) => {
-                        state.resize(*physical_size);
                     }
-                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                        state.resize(**new_inner_size);
-                    }
-                    _ => {}
                 }
             }
+            Event::RedrawRequested(_) => {
+                state.update();
+                state.render();
+            }
+            Event::MainEventsCleared => {
+                window.request_redraw();
+            }
+            _ => {}
         }
-        Event::RedrawRequested(_) => {
-            state.update();
-            state.render();
-        }
-        Event::MainEventsCleared => {
-            window.request_redraw();
-        }
-        _ => {}
-    });
+    })
 }
 
 struct State {
@@ -75,6 +75,7 @@ struct State {
     queue: wgpu::Queue,
     sc_desc: wgpu::SwapChainDescriptor,
     swap_chain: wgpu::SwapChain,
+    input: WinitInputHelper,
 
     state_handler: state::state_handler::StateHandler,
 
@@ -83,6 +84,8 @@ struct State {
 
 impl State {
     async fn new(window: &Window) -> Self {
+        let mut input = WinitInputHelper::new();
+
         let size = window.inner_size();
 
         let surface = wgpu::Surface::create(window);
@@ -116,11 +119,13 @@ impl State {
 
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
-        let mut state_handler = StateHandler::new();
+        let mut state_handler = StateHandler::new(&device, &sc_desc);
 
-        state_handler.add_state(Box::new(state::states::test_state::TestState::new(
+        state_handler.add_state(Box::new(state::states::chaotic_state::ChaoticState::new(
             &device, &queue, &sc_desc, &size,
         )));
+
+        state_handler.set_state(state::states::state_ids::CHAOTIC);
 
         Self {
             surface,
@@ -128,6 +133,7 @@ impl State {
             queue,
             sc_desc,
             swap_chain,
+            input,
 
             state_handler,
 
@@ -136,7 +142,7 @@ impl State {
     }
 
     fn update(&mut self) {
-        self.state_handler.states[1].update(&mut self.device, &mut self.queue);
+        self.state_handler.states[self.state_handler.current_state_in_vec].update(&mut self.device, &mut self.queue);
     }
 
     fn render(&mut self) {
@@ -150,7 +156,9 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
-        self.state_handler.states[1].render(&frame, &mut encoder);
+        {
+            self.state_handler.states[self.state_handler.current_state_in_vec].render(&frame, &mut encoder);
+        }
 
         self.queue.submit(&[encoder.finish()]);
     }
@@ -159,11 +167,31 @@ impl State {
         self.size = new_size;
         self.sc_desc.width = new_size.width;
         self.sc_desc.height = new_size.height;
+        self.state_handler.states[self.state_handler.current_state_in_vec].resize(&mut self.device, &mut self.sc_desc, &self.size);
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
-        self.state_handler.states[1].resize(&mut self.device, &mut self.sc_desc, &self.size);
     }
 
-    fn input(&mut self, event: &WindowEvent) -> bool {
-        self.state_handler.states[1].input(event)
+    // RESIZE STATE AFTER STATE CHANGE TO FULFILL ASSERTION
+    fn input(&mut self, event: &WindowEvent, control_flow: &mut ControlFlow) -> bool {
+        use crate::state::states::state_ids;
+
+        if self.input.key_released(VirtualKeyCode::Escape) || self.input.quit() {
+            *control_flow = ControlFlow::Exit;
+            return false
+        }
+        if self.input.key_pressed(VirtualKeyCode::F1) {
+            self.state_handler.set_state(state_ids::NONE);
+            self.state_handler.states[self.state_handler.current_state_in_vec].resize(&mut self.device, &mut self.sc_desc, &self.size);
+
+        }
+        if self.input.key_pressed(VirtualKeyCode::F3) {
+            self.state_handler.set_state(state_ids::MENU);
+            self.state_handler.states[self.state_handler.current_state_in_vec].resize(&mut self.device, &mut self.sc_desc, &self.size);
+        }
+        if self.input.key_pressed(VirtualKeyCode::F4) {
+            self.state_handler.set_state(state_ids::CHAOTIC);
+            self.state_handler.states[self.state_handler.current_state_in_vec].resize(&mut self.device, &mut self.sc_desc, &self.size);
+        }
+        self.state_handler.states[self.state_handler.current_state_in_vec].input(&self.input)
     }
 }
