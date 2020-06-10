@@ -17,8 +17,8 @@ pub struct Camera {
 
 impl Camera {
     pub fn new(sc_desc: &wgpu::SwapChainDescriptor) -> Self {
-        let vertical_fov: f32 = std::f32::consts::PI / 3.0;
-        let aspect = sc_desc.width as f32 / sc_desc.height as f32;
+        let vertical_fov: f32 = utils::rad(60.0);
+        let aspect = sc_desc.width as f32 / sc_desc.height as f32 ;
         let z_near: f32 = 0.1;
         let z_far: f32 = 100.0;
 
@@ -41,7 +41,7 @@ impl Camera {
     }
 
     pub fn to_matrix(&self) -> Mat4 {
-        self.perspective  * self.transformation_matrix()
+        self.perspective * self.transformation_matrix()
     }
 }
 
@@ -56,6 +56,8 @@ pub struct CameraController {
     is_shift: bool,
     is_q: bool,
     is_e: bool,
+    zoom: f32,
+
     old_mouse_coords: (f32, f32),
     mouse_coords: (f32, f32),
 }
@@ -71,15 +73,17 @@ impl CameraController {
         self.is_space = input.key_held(vkc::Space);
         self.is_shift = input.key_held(vkc::LShift);
         self.is_con = input.key_held(vkc::LControl);
+
         self.mouse_coords = match input.mouse() {
             Some(input) => input,
             _ => (0.0, 0.0)
         };
+
+        self.zoom += input.scroll_diff();
     }
 
     pub fn update(&mut self, camera: &mut Camera) {
         self.update_rotation(camera);
-        let camera_rotor = camera.transformation.rotation;
 
         let forward: Vec3 = Vec3::new(0.0, 0.0, 1.0);
         let left: Vec3 = Vec3::new(1.0, 0.0, 0.0);
@@ -129,13 +133,13 @@ impl CameraController {
         }
         match self.is_q {
             true => {
-                camera.transformation.append_rotation(rotor_from_angles(0.0, 0.0, 1.0));
+                camera.transformation.append_rotation(rotor_from_angles(0.0, 0.0, -1.0));
             }
             false => {},
         }
         match self.is_e {
             true => {
-                camera.transformation.append_rotation(rotor_from_angles(0.0, 0.0, -1.0));
+                camera.transformation.append_rotation(rotor_from_angles(0.0, 0.0, 1.0));
             }
             false => {},
         }
@@ -155,14 +159,6 @@ impl CameraController {
         let offset_rotor: Rotor3 = utils::rotor_from_angles(dy, dx, 0.0);
 
         camera.transformation.append_rotation(offset_rotor);
-        /*
-        let current_rotor = camera.transformation.rotation;
-        let reset_roll_rotor = rotor_from_angles(0.0, 0.0, -current_rotor.into_matrix().cols[0].z);
-
-        camera.transformation.append_rotation(reset_roll_rotor);*/
-        let rotation_matrix: uv::Mat3 = camera.transformation.rotation.into_matrix();
-        let roll: f32 = f32::atan2(rotation_matrix.cols[0].z, rotation_matrix.cols[1].z);
-        println!("Camera Roll: {}", roll / PI * 180.0);
     }
 }
 
@@ -179,6 +175,7 @@ impl Default for CameraController {
             is_shift: false,
             is_q: false,
             is_e: false,
+            zoom: 1.0,
             old_mouse_coords: (0.0, 0.0),
             mouse_coords: (0.0, 0.0),
         }

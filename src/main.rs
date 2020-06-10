@@ -34,7 +34,7 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
-    window.set_cursor_grab(false);
+    window.set_cursor_grab(true).unwrap();
 
     let mut state = block_on(State::new(&window));
 
