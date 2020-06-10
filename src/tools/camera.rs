@@ -6,6 +6,9 @@ use uv::mat::Mat4;
 use uv::vec::Vec3;
 use uv::rotor::Rotor3;
 use uv::Isometry3;
+use crate::utils;
+use crate::utils::rotor_from_angles;
+use std::f32::consts::PI;
 
 pub struct Camera {
     perspective: Mat4,
@@ -63,20 +66,25 @@ impl CameraController {
         self.is_s = input.key_held(vkc::S);
         self.is_a = input.key_held(vkc::A);
         self.is_d = input.key_held(vkc::D);
+        self.is_q = input.key_held(vkc::Q);
+        self.is_e = input.key_held(vkc::E);
         self.is_space = input.key_held(vkc::Space);
         self.is_shift = input.key_held(vkc::LShift);
         self.is_con = input.key_held(vkc::LControl);
         self.mouse_coords = match input.mouse() {
-            Some(coords) => {
-                (coords.0, coords.1)
-            }
-            _ => {
-                (0.0, 0.0)
-            }
-        }
+            Some(input) => input,
+            _ => (0.0, 0.0)
+        };
     }
 
     pub fn update(&mut self, camera: &mut Camera) {
+        self.update_rotation(camera);
+        let camera_rotor = camera.transformation.rotation;
+
+        let forward: Vec3 = Vec3::new(0.0, 0.0, 1.0);
+        let left: Vec3 = Vec3::new(1.0, 0.0, 0.0);
+        let up: Vec3 = Vec3::new(0.0, -1.0, 0.0);
+
         match self.is_con {
             true => {
             }
@@ -85,62 +93,76 @@ impl CameraController {
 
         match self.is_w {
             true => {
-
+                camera.transformation.translation += forward * self.speed;
             }
             false => {}
         }
         match self.is_s {
             true => {
-
+                camera.transformation.translation -= forward * self.speed;
             }
             false => {}
         }
         match self.is_a {
             true => {
-
+                camera.transformation.translation += left * self.speed;
             }
             false => {}
         }
         match self.is_d {
             true => {
-
+                camera.transformation.translation -= left * self.speed;
             }
             false => {}
         }
         match self.is_space {
             true => {
-
+                camera.transformation.translation += up * self.speed;
             }
             false => {}
         }
         match self.is_shift {
             true => {
-
+                camera.transformation.translation -= up * self.speed;
             }
             false => {}
         }
         match self.is_q {
             true => {
-
+                camera.transformation.append_rotation(rotor_from_angles(0.0, 0.0, 1.0));
             }
             false => {},
         }
         match self.is_e {
             true => {
-
+                camera.transformation.append_rotation(rotor_from_angles(0.0, 0.0, -1.0));
             }
             false => {},
         }
+    }
 
-        // XZ = YAW
-        // YZ = PITCH
-        // XY = ROLL
-        let mouse_delta = (self.mouse_coords.0 - self.old_mouse_coords.0, self.mouse_coords.1 - self.old_mouse_coords.1);
-        self.old_mouse_coords = self.mouse_coords.clone();
-        let rotation: Rotor3 = Rotor3::from_rotation_yz(0.02) * Rotor3::from_rotation_xy(0.02);
+    /// >:[
+    fn update_rotation(&mut self, camera: &mut Camera) {
+        if self.mouse_coords.0 == self.old_mouse_coords.0 && self.mouse_coords.1 == self.old_mouse_coords.1 {
+            return;
+        }
 
-        println!("{:?}", camera.transformation.rotation);
-        camera.transformation.rotation = camera.transformation.rotation * rotation;
+        let dx: f32 = -self.mouse_coords.0 + self.old_mouse_coords.0;
+        let dy: f32 = self.mouse_coords.1 - self.old_mouse_coords.1;
+
+        self.old_mouse_coords = self.mouse_coords;
+
+        let offset_rotor: Rotor3 = utils::rotor_from_angles(dy, dx, 0.0);
+
+        camera.transformation.append_rotation(offset_rotor);
+        /*
+        let current_rotor = camera.transformation.rotation;
+        let reset_roll_rotor = rotor_from_angles(0.0, 0.0, -current_rotor.into_matrix().cols[0].z);
+
+        camera.transformation.append_rotation(reset_roll_rotor);*/
+        let rotation_matrix: uv::Mat3 = camera.transformation.rotation.into_matrix();
+        let roll: f32 = f32::atan2(rotation_matrix.cols[0].z, rotation_matrix.cols[1].z);
+        println!("Camera Roll: {}", roll / PI * 180.0);
     }
 }
 
