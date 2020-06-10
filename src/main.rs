@@ -1,4 +1,4 @@
-extern crate nalgebra as na;
+extern crate ultraviolet as uv;
 
 use std::mem;
 
@@ -23,9 +23,9 @@ mod tools;
 
 use state::traits::Stateful;
 
-use crate::camera::{Camera, CameraController, Uniforms};
+
 use crate::state::state_handler::StateHandler;
-use types::{Rectangle, Vertex, VertexC};
+
 
 fn main() {
     let event_loop = EventLoop::new();
@@ -121,10 +121,6 @@ impl State {
 
         let mut state_handler = StateHandler::new(&device, &sc_desc);
 
-        state_handler.add_state(Box::new(state::states::test_state::TestState::new(
-            &device, &queue, &sc_desc, &size,
-        )));
-
         state_handler.add_state(Box::new(state::states::chaotic_state::ChaoticState::new(
             &device, &queue, &sc_desc, &size,
         )));
@@ -185,11 +181,6 @@ impl State {
         }
         if self.input.key_pressed(VirtualKeyCode::F1) {
             self.state_handler.set_state(state_ids::NONE);
-            self.state_handler.states[self.state_handler.current_state_in_vec].resize(&mut self.device, &mut self.sc_desc, &self.size);
-
-        }
-        if self.input.key_pressed(VirtualKeyCode::F2) {
-            self.state_handler.set_state(state_ids::TEST);
             self.state_handler.states[self.state_handler.current_state_in_vec].resize(&mut self.device, &mut self.sc_desc, &self.size);
 
         }

@@ -3,19 +3,18 @@ use crate::tools::camera::Camera;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct Uniforms {
-    view_proj: na::Matrix4<f32>,
+    view_proj: uv::Mat4,
 }
 
 impl Uniforms {
     pub fn new() -> Self {
-        let mut matrix: na::Matrix4<f32> = na::Matrix4::default();
-        matrix.fill_with_identity();
+        let mut matrix: uv::Mat4 = uv::Mat4::identity();
         Self {
             view_proj: matrix,
         }
     }
 
-    pub fn update_view_proj(&mut self, view_proj: na::Matrix4<f32>) {
+    pub fn update_view_proj(&mut self, view_proj: uv::Mat4) {
         self.view_proj = view_proj;
     }
 }
