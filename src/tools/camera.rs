@@ -84,6 +84,12 @@ impl CameraController {
         };
 
         self.zoom += input.scroll_diff();
+        if self.zoom >= 6.0 {
+            self.zoom -= 1.0;
+        }
+        if self.zoom <= - 10.0 {
+            self.zoom += 1.0
+        }
     }
 
     pub fn update(&mut self, camera: &mut Camera) {
@@ -148,7 +154,7 @@ impl CameraController {
             false => {},
         }
 
-        self.change_fov(camera, camera.fov - self.zoom * 5.0);
+        self.change_fov(camera);
     }
 
     /// >:[
@@ -168,31 +174,34 @@ impl CameraController {
     }
 
     /// I can feel the suffer on it's way back to us
-    fn change_fov(&mut self, camera: &mut Camera, fov_angle: f32) {
+    fn change_fov(&mut self, camera: &mut Camera) {
+
+        let fov_angle = camera.fov;
+
+        let mut fov: f32 = fov_angle - self.zoom / 5.0;
+
         // You want some flippy dippy or some zoomers?
-        if fov_angle >= 180.0 || fov_angle <  0.0 {
+        if fov >= 180.0 || fov <  0.0 {
             // how about no
-            self.zoom += if fov_angle >= 180.0 { 1.0 } else { -1.0 };
+            if fov >= 180.0 {
+                fov -= fov_angle
+            } else {
+                fov += fov_angle
+            };
             return;
         }
 
-        let fov: f32 = rad(fov_angle);
 
-        // We don't do that here
-        if fov == camera.fov {
-            return;
-        }
+        println!("fov_angle: {}", fov);
 
         // Don't even complain about the Variable names, I didn't
-        //  come up with them >:c
+        // come up with them >:c
         let t: f32 = (fov / 2.0).tan();
         let sy: f32 = 1.0 / t;
         let sx: f32 = sy / camera.aspect;
 
         camera.perspective.cols[0].x = sx;
         camera.perspective.cols[1].y = sy;
-
-        println!("FOV: {:?}", fov_angle);
     }
 }
 
@@ -209,7 +218,7 @@ impl Default for CameraController {
             is_shift: false,
             is_q: false,
             is_e: false,
-            zoom: 1.0,
+            zoom: 0.0,
             old_mouse_coords: (0.0, 0.0),
             mouse_coords: (0.0, 0.0),
         }
