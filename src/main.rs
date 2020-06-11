@@ -13,7 +13,6 @@ use glsl_to_spirv::ShaderType;
 use wgpu::{RenderPassDescriptor, ShaderModule};
 use winit_input_helper::WinitInputHelper;
 
-mod camera;
 mod config;
 mod render;
 mod state;
